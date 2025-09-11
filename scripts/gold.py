@@ -5,14 +5,6 @@ from datetime import timezone
 import requests
 from bs4 import BeautifulSoup
 
-# ← set your webhook here
-
-#def send_to_discord(message: str):
-#    payload = {"content": message}
-#   resp = requests.post(WEBHOOK_URL, json=payload)
-#    if resp.status_code != 204:
-#       print(f"[Discord] Failed to send message: {resp.status_code}")
-
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
     market_urls = []
@@ -76,11 +68,10 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
                     last_time = last_ping.get(key)
                     if not last_time or (now - last_time) > datetime.timedelta(hours=cooldown_hours):
                         # build and send the message
-                        msg = (
-                            f"💰 {metal} Alert @ **[{st_name}]({url})** ({st_type})\n"
-                            f"System: **[{system_name}]({system_address})**\n"
-                            f"Supply: {stock:,}, Sell Price: {buy_price:,}\n"
-                            f"<@729455284057276547>"
+                            msg = (
+                                f"Hidden market detected at {st_name}, {url}\n"
+                                f"System: {system_name}, {system_address}\n"
+                                f"Stock: {stock}"
                         )
                         send_to_discord(msg)
                         last_ping[key] = now
