@@ -73,7 +73,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
                             f"System: {system_name}, {system_address}\n"
                             f"Stock: {stock}"
                         )
-                        send_to_discord(msg)
+                        #send_to_discord(msg)
                         last_ping[key] = now
                         print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
