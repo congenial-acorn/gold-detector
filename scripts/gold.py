@@ -5,6 +5,15 @@ from datetime import timezone
 import requests
 from bs4 import BeautifulSoup
 
+# Mark-and-print helper so the bot forwards only what you choose
+DISCORD_PREFIX = "__DISCORD__"
+
+def send_to_bot(message: str):
+    # print with the prefix the bot is listening for
+    # -u (unbuffered) is used by the runner, so this flushes immediately
+    print(f"{DISCORD_PREFIX} {message}")
+
+
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
     market_urls = []
@@ -73,7 +82,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
                             f"System: {system_name}, {system_address}\n"
                             f"Stock: {stock}"
                         )
-                        #send_to_discord(msg)
+                        send_to_bot(msg)
                         last_ping[key] = now
                         print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
