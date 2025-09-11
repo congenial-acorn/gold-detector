@@ -6,6 +6,12 @@ from pathlib import Path
 import discord
 from discord import AllowedMentions
 from dotenv import load_dotenv
+from collections import deque
+def _bool(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in ("1","true","yes","y","on")
+
+FORWARD_STDERR_ALWAYS = _bool("FORWARD_STDERR_ALWAYS", "true")
+CRASH_TAIL_LINES = int(os.getenv("CRASH_TAIL_LINES", "50"))
 
 # ---------------- Config ----------------
 load_dotenv()
@@ -131,7 +137,7 @@ async def _broadcast(text: str, *, do_ping: bool):
 
 # --------------- Runner: gold.py ---------------
 async def _run_and_stream():
-    """Run gold.py unbuffered and forward its output according to rules."""
+    """Run gold.py unbuffered and forward its output according to rules, with stderr/crash help."""
     print(f"[bot] runner watching: {SCRIPT_PATH}")
 
     while True:
@@ -154,6 +160,9 @@ async def _run_and_stream():
             await asyncio.sleep(RESTART_DELAY_SECS)
             continue
 
+        # Keep the last N stderr lines for crash summary
+        stderr_tail = deque(maxlen=max(0, CRASH_TAIL_LINES))
+
         async def pump(stream: asyncio.StreamReader, label: str):
             while True:
                 line = await stream.readline()
@@ -161,32 +170,42 @@ async def _run_and_stream():
                     break
                 text = line.decode(errors="replace").rstrip("\r\n")
 
+                # Track stderr for crash summaries
+                if label == "stderr" and CRASH_TAIL_LINES > 0:
+                    stderr_tail.append(text)
+
                 if FORWARD_ALL:
-                    # When mirroring all, ping only if token appears at start
-                    do_ping = text.startswith(PING_TOKEN)
-                    if do_ping:
-                        text = text[len(PING_TOKEN):].lstrip()
-                    await _broadcast(f"[{label}] {text}", do_ping=do_ping)
+                    await _broadcast(f"[{label}] {text}", do_ping=False)
                 else:
-                    # Only forward lines that start with PREFIX
-                    if not text.startswith(PREFIX):
+                    if label == "stderr" and FORWARD_STDERR_ALWAYS:
+                        # Always show stderr lines to surface errors
+                        await _broadcast(f"[stderr] {text}", do_ping=False)
                         continue
-                    text = text[len(PREFIX):].lstrip()
-                    # Per-message ping if the token is present at the start
-                    do_ping = text.startswith(PING_TOKEN)
-                    if do_ping:
-                        text = text[len(PING_TOKEN):].lstrip()
-                    # Or always ping if configured
-                    do_ping = do_ping or PING_ALWAYS
-                    await _broadcast(text, do_ping=do_ping)
+                    # normal prefixed-forwarding for stdout/stderr
+                    if text.startswith(PREFIX):
+                        await _broadcast(text[len(PREFIX):].lstrip(), do_ping=False)
 
-        await asyncio.gather(
-            pump(proc.stdout, "stdout"),
-            pump(proc.stderr, "stderr"),
-        )
+        # Pump both streams; wait for process exit
+        await asyncio.gather(pump(proc.stdout, "stdout"), pump(proc.stderr, "stderr"))
+        rc = proc.returncode
 
-        if ANNOUNCE_SYSTEM:
-            await _broadcast(f"⏹️ `{SCRIPT_PATH.name}` exited. Restarting in {RESTART_DELAY_SECS}s…", do_ping=False)
+        # On exit: show a compact crash report with the last N stderr lines
+        if CRASH_TAIL_LINES > 0:
+            tail = "\n".join(stderr_tail)
+            if tail:
+                # wrap tail in a code block to keep it readable
+                summary = (
+                    f"💥 `{SCRIPT_PATH.name}` exited with code `{rc}`.\n"
+                    f"Last {len(stderr_tail)} stderr lines:\n"
+                    f"```\n{tail[-1900:]}\n```"
+                )
+                await _broadcast(summary, do_ping=False)
+            else:
+                await _broadcast(f"💥 `{SCRIPT_PATH.name}` exited with code `{rc}` (no stderr).", do_ping=False)
+        else:
+            if ANNOUNCE_SYSTEM:
+                await _broadcast(f"⏹️ `{SCRIPT_PATH.name}` exited with code `{rc}`.", do_ping=False)
+
         print(f"[bot] process exited; restarting in {RESTART_DELAY_SECS}s…")
         await asyncio.sleep(RESTART_DELAY_SECS)
 
