@@ -6,32 +6,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-SCRIPT_PATH = os.getenv("SCRIPT_PATH", "gold.py")
+SCRIPT_PATH = os.getenv("SCRIPT_PATH", "scripts/gold.py")
+PREFIX = os.getenv("DISCORD_PREFIX", "__DISCORD__")
+FORWARD_ALL = os.getenv("FORWARD_ALL", "false").lower() in ("1","true","yes")
 
 if not TOKEN:
     raise SystemExit("Missing DISCORD_BOT_TOKEN in .env")
-if not os.path.exists(SCRIPT_PATH):
-    print(f"Warning: SCRIPT_PATH not found: {SCRIPT_PATH}")
 
-# Minimal intents: we just need to know the guilds and send messages.
 intents = discord.Intents.none()
 intents.guilds = True
-
 client = discord.Client(intents=intents)
 
-# guild_id -> channel object where we can send
 targets: dict[int, discord.abc.Messageable] = {}
 
 def pick_channel(guild: discord.Guild):
-    """Prefer system channel; otherwise first text channel we can send in."""
     me = guild.me
     def can_send(ch: discord.TextChannel):
-        try:
-            perms = ch.permissions_for(me)
-            return perms.send_messages
-        except Exception:
-            return False
-
+        try: return ch.permissions_for(me).send_messages
+        except: return False
     if guild.system_channel and can_send(guild.system_channel):
         return guild.system_channel
     for ch in guild.text_channels:
@@ -40,33 +32,24 @@ def pick_channel(guild: discord.Guild):
     return None
 
 async def refresh_targets():
-    """Populate targets for all guilds we’re in."""
     for g in client.guilds:
         if g.id not in targets or targets[g.id] is None:
             ch = pick_channel(g)
             if ch:
                 targets[g.id] = ch
-                try:
-                    await ch.send("👋 Streaming script output here.")
-                except Exception:
-                    pass
-            else:
-                print(f"[warn] No sendable channel in {g.name} ({g.id})")
+
+async def safe_send(ch: discord.abc.Messageable, text: str):
+    if not text: return
+    # chunk to <=2000 chars
+    for i in range(0, len(text), 2000):
+        try: await ch.send(text[i:i+2000])
+        except: pass
 
 async def broadcast(text: str):
-    """Send a single line to all target channels (truncate to 2000 chars)."""
-    if not text:
-        return
-    msg = text[:2000]
-    for ch in list(targets.values()):
-        try:
-            await ch.send(msg)
-        except Exception:
-            # ignore missing perms / HTTP issues in minimal bot
-            pass
+    await refresh_targets()
+    await asyncio.gather(*(safe_send(ch, text) for ch in targets.values()))
 
 async def run_and_stream():
-    """Run SCRIPT_PATH with unbuffered Python; stream stdout & stderr line-by-line."""
     while True:
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -78,8 +61,7 @@ async def run_and_stream():
             await broadcast(f"▶️ Started `{os.path.basename(SCRIPT_PATH)}`")
         except Exception as e:
             await broadcast(f"❌ Failed to start script: {e}. Retrying in 5s…")
-            await asyncio.sleep(5)
-            continue
+            await asyncio.sleep(5); continue
 
         async def pump(stream: asyncio.StreamReader, label: str):
             while True:
@@ -87,15 +69,14 @@ async def run_and_stream():
                 if not line:
                     break
                 text = line.decode(errors="replace").rstrip("\r\n")
-                # Prefix with [stdout]/[stderr] so people can tell which is which
-                await broadcast(f"[{label}] {text}")
+                if FORWARD_ALL:
+                    await broadcast(f"[{label}] {text}")
+                else:
+                    # Only forward lines that start with PREFIX
+                    if text.startswith(PREFIX):
+                        await broadcast(text[len(PREFIX):].lstrip())
 
-        # Pump both streams; wait for process to exit
-        await asyncio.gather(
-            pump(proc.stdout, "stdout"),
-            pump(proc.stderr, "stderr"),
-        )
-
+        await asyncio.gather(pump(proc.stdout, "stdout"), pump(proc.stderr, "stderr"))
         await broadcast("⏹️ Script stopped. Restarting in 5s…")
         await asyncio.sleep(5)
 
@@ -103,7 +84,7 @@ async def run_and_stream():
 async def on_ready():
     print(f"Logged in as {client.user}")
     await refresh_targets()
-    # Start the stream loop
+    await broadcast(f"🤖 Ready. Forwarding lines starting with `{PREFIX}`.")
     client.loop.create_task(run_and_stream())
 
 @client.event
@@ -111,15 +92,7 @@ async def on_guild_join(guild: discord.Guild):
     ch = pick_channel(guild)
     if ch:
         targets[guild.id] = ch
-        try:
-            await ch.send("👋 Thanks for inviting me — I’ll post script output here.")
-        except Exception:
-            pass
-    else:
-        print(f"[warn] Joined {guild.name} but no channel I can send to.")
-
-def main():
-    client.run(TOKEN)
+        await safe_send(ch, "👋 Thanks for inviting me! I’ll post marked messages here.")
 
 if __name__ == "__main__":
-    main()
+    client.run(TOKEN)
