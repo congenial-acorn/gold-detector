@@ -76,13 +76,27 @@ def _resolve_ping_role(guild: discord.Guild) -> discord.Role | None:
 
 async def _refresh_targets_and_roles():
     for g in client.guilds:
-        # Channel
+        # choose a channel
         if g.id not in targets or targets[g.id] is None:
             ch = _pick_channel(g)
             if ch:
                 targets[g.id] = ch
-        # Role to ping
-        ping_roles[g.id] = _resolve_ping_role(g)
+
+        # resolve role
+        role = _resolve_ping_role(g)
+        ping_roles[g.id] = role
+
+        # one-line debug so you can see what the bot found
+        try:
+            print(
+                f"[ping-debug] guild={g.name}({g.id}) "
+                f"channel={getattr(targets.get(g.id), 'name', None)} "
+                f"role={'None' if role is None else f'{role.name}({role.id})'} "
+                f"role_mentionable={'-' if role is None else role.mentionable} "
+                f"bot_can_mention_all={g.me.guild_permissions.mention_everyone}"
+            )
+        except Exception:
+            pass
 
 async def _safe_send(ch: discord.abc.Messageable, text: str, *, allow_role_mentions: bool = False):
     if not text:
