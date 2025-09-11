@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 # Mark-and-print helper so the bot forwards only what you choose
 DISCORD_PREFIX = "__DISCORD__"
 PING_TOKEN = os.getenv("PING_TOKEN", "[PING]")
-send_to_bot("Ping check from gold.py", ping=True)
+
 
 def send_to_bot(message: str, *, ping: bool = False):
     """Prints a marked line that the bot forwards. Set ping=True to request a role mention."""
@@ -17,6 +17,7 @@ def send_to_bot(message: str, *, ping: bool = False):
     else:
         print(f"{DISCORD_PREFIX} {message}", flush=True)
 
+send_to_bot("Ping check from gold.py", ping=True)
 
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
