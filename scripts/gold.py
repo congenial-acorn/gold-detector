@@ -68,10 +68,10 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
                     last_time = last_ping.get(key)
                     if not last_time or (now - last_time) > datetime.timedelta(hours=cooldown_hours):
                         # build and send the message
-                            msg = (
-                                f"Hidden market detected at {st_name}, {url}\n"
-                                f"System: {system_name}, {system_address}\n"
-                                f"Stock: {stock}"
+                        msg = (
+                            f"Hidden market detected at {st_name}, {url}\n"
+                            f"System: {system_name}, {system_address}\n"
+                            f"Stock: {stock}"
                         )
                         send_to_discord(msg)
                         last_ping[key] = now
