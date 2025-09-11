@@ -17,7 +17,7 @@ def send_to_bot(message: str, *, ping: bool = False):
     else:
         print(f"{DISCORD_PREFIX} {message}", flush=True)
 
-send_to_bot("Ping check from gold.py", ping=True)
+
 
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
