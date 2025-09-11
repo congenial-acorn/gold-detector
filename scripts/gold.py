@@ -4,7 +4,7 @@ import datetime
 from datetime import timezone
 import requests
 from bs4 import BeautifulSoup
-import os
+
 
 # Mark-and-print helper so the bot forwards only what you choose
 DISCORD_PREFIX = "__DISCORD__"
