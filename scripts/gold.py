@@ -7,11 +7,14 @@ from bs4 import BeautifulSoup
 
 # Mark-and-print helper so the bot forwards only what you choose
 DISCORD_PREFIX = "__DISCORD__"
+PING_TOKEN = os.getenv("PING_TOKEN", "[PING]")
 
-def send_to_bot(message: str):
-    # print with the prefix the bot is listening for
-    # -u (unbuffered) is used by the runner, so this flushes immediately
-    print(f"{DISCORD_PREFIX} {message}")
+def send_to_bot(message: str, *, ping: bool = False):
+    """Prints a marked line that the bot forwards. Set ping=True to request a role mention."""
+    if ping:
+        print(f"{DISCORD_PREFIX} {PING_TOKEN} {message}", flush=True)
+    else:
+        print(f"{DISCORD_PREFIX} {message}", flush=True)
 
 
 def get_station_market_urls(near_urls):
@@ -82,7 +85,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
                             f"System: {system_name}, {system_address}\n"
                             f"Stock: {stock}"
                         )
-                        send_to_bot(msg)
+                        send_to_bot(msg, ping=True)
                         last_ping[key] = now
                         print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
