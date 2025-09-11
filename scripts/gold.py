@@ -6,13 +6,12 @@ import requests
 from bs4 import BeautifulSoup
 
 # ← set your webhook here
-WEBHOOK_URL = "https://discord.com/api/webhooks/1380639118454816992/Nrcz_6UTdOsmqSmwLeyBrwvGyaaW5fhh-OZjehHVcQvled8LZUZdCsTI55L0wWs5Sf06"
 
-def send_to_discord(message: str):
-    payload = {"content": message}
-    resp = requests.post(WEBHOOK_URL, json=payload)
-    if resp.status_code != 204:
-        print(f"[Discord] Failed to send message: {resp.status_code}")
+#def send_to_discord(message: str):
+#    payload = {"content": message}
+#   resp = requests.post(WEBHOOK_URL, json=payload)
+#    if resp.status_code != 204:
+#       print(f"[Discord] Failed to send message: {resp.status_code}")
 
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
