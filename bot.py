@@ -1,3 +1,15 @@
+import os
+import time
+import asyncio
+import threading
+from typing import Optional, Dict
+from pathlib import Path
+
+import discord
+from dotenv import load_dotenv, find_dotenv
+
+import gold  # gold.py must be importable (same folder or on PYTHONPATH)
+
 # Load .env (CWD first, then next to this file)
 _ = load_dotenv(find_dotenv())
 if not os.getenv("DISCORD_TOKEN"):
@@ -13,6 +25,10 @@ DEBUG_SERVER_ID = int(os.getenv("DEBUG_SERVER_ID", "0"))  # Specify server ID fo
 
 # Per-server and per-message cooldown state
 _server_message_cooldowns: Dict[int, Dict[int, float]] = {}
+
+def log(*a):
+    if BOT_VERBOSE:
+        print(*a, flush=True)
 
 # ---------- Channel / Role helpers ----------
 
