@@ -37,7 +37,7 @@ def get_station_market_urls(near_urls):
     # preserve order, drop dupes
     return list(dict.fromkeys(market_urls))
 
-def monitor_metals(near_urls, metals, cooldown_hours=48):
+def monitor_metals(near_urls, metals, cooldown_hours=0):
     # key = f"{station_id}-{metal_name}"
     last_ping = {}  # key -> datetime of last ping
     cooldown = datetime.timedelta(hours=cooldown_hours)
@@ -95,7 +95,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
 
         # wait before checking again
-        time.sleep(5 * 60)  # 5 minutes
+        time.sleep(10 * 60)  # 5 minutes
 
 
 def main():
