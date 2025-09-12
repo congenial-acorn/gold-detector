@@ -199,7 +199,7 @@ def main():
         "?formbrief=1&ps1=Sol&pi15=6&pi16=14&ps2=&pa2%5B%5D=26"
     )
     # monitor both Gold and Silver
-    monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold", "Silver"])
+    monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold"])
     
 if __name__ == "__main__":
     main()
