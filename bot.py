@@ -23,7 +23,7 @@ BOT_VERBOSE = os.getenv("BOT_VERBOSE", "1") == "1"
 def log(msg: str):
     if BOT_VERBOSE:
         print(msg, flush=True)
-
+        
 def _to_float(env_key: str, default: float) -> float:
     try:
         return float(os.getenv(env_key, str(default)))
@@ -47,8 +47,9 @@ client = discord.Client(intents=intents)
 
 queue: asyncio.Queue[str] = asyncio.Queue()
 
-# Per-message cooldown state
-_message_cooldowns: Dict[int, float] = {}  # message_id -> timestamp of last message send
+# Per-server and per-message cooldown state
+# Structure: {guild_id -> {message_id -> timestamp of last send}}
+_server_message_cooldowns: Dict[int, Dict[int, float]] = {}
 
 # ---------- Channel / Role helpers ----------
 
@@ -74,18 +75,21 @@ def _find_role_by_name(guild: discord.Guild) -> Optional[discord.Role]:
             return r
     return None
 
-# ---------- Per-message cooldown logic ----------
+# ---------- Per-server and per-message cooldown logic ----------
 
-async def _should_send_and_update(message_id: int, now: float):
+async def _should_send_and_update(guild_id: int, message_id: int, now: float):
     """
-    Check and update cooldown for a specific message by its ID.
+    Check and update cooldown for a specific message in a specific server.
     Returns (allow: bool, previous_timestamp: float|None, remaining_seconds: float|None).
     """
-    prev_timestamp = _message_cooldowns.get(message_id)
+    if guild_id not in _server_message_cooldowns:
+        _server_message_cooldowns[guild_id] = {}
+
+    prev_timestamp = _server_message_cooldowns[guild_id].get(message_id)
     
     if prev_timestamp is None or now - prev_timestamp >= COOLDOWN_SECONDS:
         # If the message doesn't have a cooldown or the cooldown has expired, allow sending
-        _message_cooldowns[message_id] = now
+        _server_message_cooldowns[guild_id][message_id] = now  # Update the timestamp for this message
         return True, prev_timestamp, None
     else:
         # Cooldown is still active, calculate remaining time
@@ -96,12 +100,13 @@ async def _should_send_and_update(message_id: int, now: float):
 
 async def _send_to_guild(guild: discord.Guild, content: str, message_id: int):
     now = time.time()
+    guild_id = guild.id
 
-    # Check and apply cooldown for this specific message
-    allow, prev_timestamp, remaining = await _should_send_and_update(message_id, now)
+    # Check and apply cooldown for this specific message and server
+    allow, prev_timestamp, remaining = await _should_send_and_update(guild_id, message_id, now)
     if not allow:
         hrs = remaining / 3600 if remaining else 0.0
-        log(f"[{guild.name}] Cooldown active for message {message_id}; skipping. ~{hrs:.2f}h remaining.")
+        log(f"[{guild.name}] Cooldown active for message {message_id} in this server; skipping. ~{hrs:.2f}h remaining.")
         return
 
     ch = await _named_sendable_channel(guild, ALERT_CHANNEL_NAME)
@@ -128,7 +133,7 @@ async def _dispatcher_loop():
     await client.wait_until_ready()
     while True:
         msg = await queue.get()
-        message_id = hash(msg)  # Use the hash of the message as a unique ID
+        message_id = hash(msg)  # Use the hash of the message content as its unique ID
         try:
             tasks = [asyncio.create_task(_send_to_guild(g, msg, message_id)) for g in client.guilds]
             if tasks:
