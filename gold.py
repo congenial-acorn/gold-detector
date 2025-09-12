@@ -181,9 +181,24 @@ def main():
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=6&pi16=99&pi1=0&pi17=0&pa2%5B%5D=26"
     )
-
+    url3 = (
+        "https://inara.cz/elite/nearest-stations/"
+        "?formbrief=1&ps1=Sol&pi15=3&pi16=2&pa2%5B%5D=26"
+    )
+    url4 = ( 
+        "https://inara.cz/elite/nearest-stations/"
+        "?formbrief=1&ps1=Sol&pi15=6&pi16=2&pi1=0&pi17=0&pa2%5B%5D=26"
+    )
+    url5 = (
+        "https://inara.cz/elite/nearest-stations/"
+        "?formbrief=1&ps1=Sol&pi15=3&pi16=14&pi1=0&pi17=0&pa2%5B%5D=26"
+    )
+    url6= (
+        "https://inara.cz/elite/nearest-station/"
+        "?formbrief=1&ps1=Sol&pi15=6&pi16=14&pi1=0&pi17=0&pa2%5B%5D=26"
+    )
     # monitor both Gold and Silver
-    monitor_metals([url1, url2], metals=["Gold", "Silver"])
+    monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold", "Silver"])
     
 if __name__ == "__main__":
     main()
