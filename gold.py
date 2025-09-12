@@ -195,7 +195,7 @@ def main():
         
     )
     url6= (
-        "https://inara.cz/elite/nearest-station/"
+        "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=6&pi16=14&ps2=&pa2%5B%5D=26"
     )
     # monitor both Gold and Silver
