@@ -14,6 +14,9 @@ import gold  # gold.py must be importable (same folder or on PYTHONPATH)
 _ = load_dotenv(find_dotenv())
 if not os.getenv("DISCORD_TOKEN"):
     load_dotenv(Path(__file__).with_name(".env"))
+def log(msg: str):
+    if BOT_VERBOSE:
+        print(msg, flush=True)
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 ALERT_CHANNEL_NAME = os.getenv("ALERT_CHANNEL_NAME", "").strip()
