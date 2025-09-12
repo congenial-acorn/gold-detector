@@ -18,3 +18,6 @@ Optionally create a role named exactly "Market Alert" to get pinged. You will ge
 
 ## Usage
 After setting up the bot in your server simply wait for pings. A successful gold detection happens around once a month. Once you get a message just go to the station in your hauling ship (and your carrier if you have one) and then start buying the gold. You can use Inara commodity search to find good gold sell prices nearby. Or you can load your carrier to the top and then find good sell prices later. You can make hundreds of millions of credits by doing this and this is definitely the best trading you can find outside of special conditions. 
+
+### Legal
+The source code is released under CC0. Neither this tool nor the developer are associated with Frontier Developments, Elite Dangerous, Inara.cz, or any other member or tool of the Elite Dangerous community.
