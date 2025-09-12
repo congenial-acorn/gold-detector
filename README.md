@@ -12,4 +12,4 @@ Note: when you get to the station you will see the stock is much lower then the 
 ## Bot Setup
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151&permissions=2048&integration_type=0&scope=bot
 Give the bot permission to see one channel only, it will send messages to the first channel it sees.
-Optionally create a role named exactly "Market Alert" to get pinged. You willget pinged a few times a month in groups of 3-4 pings.
+Optionally create a role named exactly "Market Alert" to get pinged. You will get pinged a few times a month in groups of 3-4 pings.
