@@ -1,4 +1,4 @@
-import re
+eimport re
 import time
 import datetime
 from datetime import timezone
@@ -191,11 +191,12 @@ def main():
     )
     url5 = (
         "https://inara.cz/elite/nearest-stations/"
-        "?formbrief=1&ps1=Sol&pi15=3&pi16=14&pi1=0&pi17=0&pa2%5B%5D=26"
+        "?formbrief=1&ps1=Sol&pi15=3&pi16=14&ps2=&pa2%5B%5D=26"
+        
     )
     url6= (
         "https://inara.cz/elite/nearest-station/"
-        "?formbrief=1&ps1=Sol&pi15=6&pi16=14&pi1=0&pi17=0&pa2%5B%5D=26"
+        "?formbrief=1&ps1=Sol&pi15=6&pi16=14&ps2=&pa2%5B%5D=26"
     )
     # monitor both Gold and Silver
     monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold", "Silver"])
