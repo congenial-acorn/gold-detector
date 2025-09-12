@@ -14,14 +14,15 @@ import gold  # gold.py must be importable (same folder or on PYTHONPATH)
 _ = load_dotenv(find_dotenv())
 if not os.getenv("DISCORD_TOKEN"):
     load_dotenv(Path(__file__).with_name(".env"))
-def log(msg: str):
-    if BOT_VERBOSE:
-        print(msg, flush=True)
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 ALERT_CHANNEL_NAME = os.getenv("ALERT_CHANNEL_NAME", "").strip()
 ROLE_NAME = os.getenv("ROLE_NAME", "").strip()
 BOT_VERBOSE = os.getenv("BOT_VERBOSE", "1") == "1"
+
+def log(msg: str):
+    if BOT_VERBOSE:
+        print(msg, flush=True)
 
 def _to_float(env_key: str, default: float) -> float:
     try:
@@ -46,9 +47,8 @@ client = discord.Client(intents=intents)
 
 queue: asyncio.Queue[str] = asyncio.Queue()
 
-# Per-server cooldown state
-_cooldown_lock = asyncio.Lock()
-_last_sent: Dict[int, float] = {}  # guild_id -> epoch seconds of last successful send
+# Per-message cooldown state
+_message_cooldowns: Dict[int, float] = {}  # message_id -> timestamp of last message send
 
 # ---------- Channel / Role helpers ----------
 
@@ -74,76 +74,39 @@ def _find_role_by_name(guild: discord.Guild) -> Optional[discord.Role]:
             return r
     return None
 
-# ---------- Per-server burst+cooldown state ----------
+# ---------- Per-message cooldown logic ----------
 
-_state_lock = asyncio.Lock()
-# guild_id -> {'burst_start': float|None, 'cooldown_until': float|None}
-_state: Dict[int, Dict[str, Optional[float]]] = {}
-
-async def _should_send_and_update(guild_id: int, now: float):
+async def _should_send_and_update(message_id: int, now: float):
     """
-    Decide if we should send for this guild given burst/cooldown rules.
-    Returns (allow: bool, prev_snapshot: Optional[dict], remaining_seconds: Optional[float]).
-    If allow=True and prev_snapshot is not None, state changed (we started a new burst) and can be rolled back on failure.
+    Check and update cooldown for a specific message by its ID.
+    Returns (allow: bool, previous_timestamp: float|None, remaining_seconds: float|None).
     """
-    async with _state_lock:
-        st = _state.get(guild_id)
-        if st is None:
-            st = {'burst_start': None, 'cooldown_until': None}
-            _state[guild_id] = st
-
-        # If currently in cooldown, skip
-        if st['cooldown_until'] is not None and now < st['cooldown_until']:
-            return False, None, st['cooldown_until'] - now
-
-        # Not in cooldown
-        if st['burst_start'] is None:
-            # Start a new burst now
-            prev = st.copy()
-            st['burst_start'] = now
-            st['cooldown_until'] = None
-            return True, prev, None
-
-        window_end = st['burst_start'] + BURST_SECONDS
-        if now <= window_end:
-            # Still inside the burst window — allow send, no state change
-            return True, None, None
-
-        # Burst has ended; set cooldown if not already set
-        st['cooldown_until'] = window_end + COOLDOWN_SECONDS
-
-        # After setting cooldown, check if we are still before cooldown end
-        if now < st['cooldown_until']:
-            return False, None, st['cooldown_until'] - now
-
-        # Cooldown already elapsed — start a new burst
-        prev = st.copy()
-        st['burst_start'] = now
-        st['cooldown_until'] = None
-        return True, prev, None
-
-async def _rollback_state(guild_id: int, prev_snapshot: Dict[str, Optional[float]]):
-    """Rollback per-guild state to prev_snapshot; used if a send fails after starting a new burst."""
-    async with _state_lock:
-        _state[guild_id] = prev_snapshot
+    prev_timestamp = _message_cooldowns.get(message_id)
+    
+    if prev_timestamp is None or now - prev_timestamp >= COOLDOWN_SECONDS:
+        # If the message doesn't have a cooldown or the cooldown has expired, allow sending
+        _message_cooldowns[message_id] = now
+        return True, prev_timestamp, None
+    else:
+        # Cooldown is still active, calculate remaining time
+        remaining_time = COOLDOWN_SECONDS - (now - prev_timestamp)
+        return False, prev_timestamp, remaining_time
 
 # ---------- Sending ----------
 
-async def _send_to_guild(guild: discord.Guild, content: str):
+async def _send_to_guild(guild: discord.Guild, content: str, message_id: int):
     now = time.time()
 
-    allow, prev_last, remaining = await _should_send_and_update(guild.id, now)
+    # Check and apply cooldown for this specific message
+    allow, prev_timestamp, remaining = await _should_send_and_update(message_id, now)
     if not allow:
         hrs = remaining / 3600 if remaining else 0.0
-        log(f"[{guild.name}] In cooldown; skipping. ~{hrs:.2f}h remaining.")
+        log(f"[{guild.name}] Cooldown active for message {message_id}; skipping. ~{hrs:.2f}h remaining.")
         return
 
     ch = await _named_sendable_channel(guild, ALERT_CHANNEL_NAME)
     if not ch:
         log(f"[{guild.name}] No send permission to a channel named '#{ALERT_CHANNEL_NAME}'. Skipping.")
-        # If we just started a new burst for this message but couldn't send, roll state back
-        if prev_last is not None:
-            await _rollback_state(guild.id, prev_last)
         return
 
     role = _find_role_by_name(guild)
@@ -152,41 +115,22 @@ async def _send_to_guild(guild: discord.Guild, content: str):
 
     try:
         await ch.send(f"{prefix}{content}", allowed_mentions=allowed_mentions)
-        # If the burst just started, we don't force-start cooldown now; it begins after BURST_SECONDS
-        # (Next messages within the window will send; after the window, cooldown applies automatically.)
-        if prev_last is not None:
-            log(f"[{guild.name}] Sent to #{ch.name}. (Burst window {BURST_MINUTES:g}m active; cooldown {COOLDOWN_HOURS:g}h after)")
+        if prev_timestamp is None:
+            log(f"[{guild.name}] Sent to #{ch.name}. (First message, burst window starts now)")
         else:
-            # Message sent within an existing burst
-            pass
+            log(f"[{guild.name}] Sent to #{ch.name}. (Cooldown applied for message {message_id})")
     except Exception as e:
         log(f"[{guild.name}] ERROR sending message: {e}")
-        # Roll back cooldown marking on failure
-        if prev_last is not None:
-            await _rollback_state(guild.id, prev_last)
 
-# ---------- Restart gold.py if it crashes ----------
-
-def run_gold():
-    """Run gold.py and restart if it crashes"""
-    while True:
-        try:
-            if hasattr(gold, "main") and callable(getattr(gold, "main")):
-                gold.main()  # your long-running loop lives here
-            else:
-                log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
-        except Exception as e:
-            log(f"[gold.py] crashed: {e}, restarting in 5 seconds...")
-            time.sleep(5)
-
-# ---------- Dispatch & lifecycle ----------
+# ---------- Dispatcher & Lifecycle ----------
 
 async def _dispatcher_loop():
     await client.wait_until_ready()
     while True:
         msg = await queue.get()
+        message_id = hash(msg)  # Use the hash of the message as a unique ID
         try:
-            tasks = [asyncio.create_task(_send_to_guild(g, msg)) for g in client.guilds]
+            tasks = [asyncio.create_task(_send_to_guild(g, msg, message_id)) for g in client.guilds]
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
         finally:
@@ -198,7 +142,7 @@ async def on_ready():
     log(f"Posting only to channels named: #{ALERT_CHANNEL_NAME}")
     if ROLE_NAME:
         log(f"Optional role mention: @{ROLE_NAME}")
-    log(f"Burst window: {BURST_MINUTES:g} minutes; Cooldown after burst: {COOLDOWN_HOURS:g} hours")
+    log(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
 
     # Wire gold.py -> async queue
     if hasattr(gold, "set_emitter"):
@@ -212,7 +156,16 @@ async def on_ready():
             log("WARNING: gold.py lacks set_emitter()/send_to_discord(); add the shim shown below.")
 
     # Start gold.py forever inside this process (so it's always running with the bot)
-    threading.Thread(target=run_gold, name="gold-runner", daemon=True).start()
+    def run_gold_forever():
+        try:
+            if hasattr(gold, "main") and callable(getattr(gold, "main")):
+                gold.main()  # your long-running loop lives here
+            else:
+                log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
+        except Exception as e:
+            log(f"[gold.py] exited with error: {e}")
+
+    threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
     log("Started gold.py in background thread.")
 
     # Start dispatcher
