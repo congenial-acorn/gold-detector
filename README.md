@@ -1,5 +1,5 @@
 # effective-octo-waddle
-Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151&permissions=2048&integration_type=0&scope=bot
+Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151
 ## Introduction
 Infrastructure failure is a well known BGS state. You are probably aware of its effects on gold prices from CMDR Mechan's merit farming video https://youtu.be/Ju1t9RlfnVQ.
 Of course with the merit farming method you don't make any money because you are buying gold at full price.
@@ -13,7 +13,7 @@ This bot will detect the stations that are in infrastructure failure but without
 Note: You may read about other effects of BGS on markets here https://cdb.sotl.org.uk/effects
 
 ## Bot Setup
-Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151&permissions=2048&integration_type=0&scope=bot
+Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151
 
 Give the bot permission to see one channel only, it will send messages to the first channel it sees.
 Optionally create a role named exactly "Market Alert" to get pinged. You will get pinged a few times a month in groups of 3-4 pings.
