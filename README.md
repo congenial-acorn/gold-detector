@@ -1,1 +1,10 @@
 # effective-octo-waddle
+## Introduction
+Infrastructure failure is a well known BGS state. You are probably aware of its effects on gold prices from CMDR Mechan's merit farming video https://youtu.be/Ju1t9RlfnVQ.
+Of course with the merit farming method you don't make any money because you are buying gold at full price.
+But what if you could buy the gold truely at that 90% discount of infrastructure failure? You could make 63k profit/ton at ideal conditions.
+Now if you go to Inara and look for these stations in infrastructure failure you will see that all the stations are out of stock. Because Inara will list them as the top trade route by profit and they will get swarmed like a swarm of locusts and suck up all the stock.
+But there are stations that are hidden from Inara. Because the site depends on user data and the bubble is so huge that not all stations are updated all the time.
+This bot will detect the stations that are in infrastructure failure but without an updated market. So they will have ample stocks of gold for you to profit.
+
+Note: when you get to the station you will see the stock is much lower then the bot reported. The stock will actually refill over time so do not worry.
