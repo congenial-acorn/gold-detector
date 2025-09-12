@@ -1,4 +1,4 @@
-import requests
+import requests as re
 import time
 import datetime
 from datetime import timezone
