@@ -1,5 +1,5 @@
 # effective-octo-waddle
-Bot invite link: https://discord.com/oauth2/authorize?client_id=1415805825364267151&permissions=2048&integration_type=0&scope=bot
+Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151&permissions=2048&integration_type=0&scope=bot
 ## Introduction
 Infrastructure failure is a well known BGS state. You are probably aware of its effects on gold prices from CMDR Mechan's merit farming video https://youtu.be/Ju1t9RlfnVQ.
 Of course with the merit farming method you don't make any money because you are buying gold at full price.
