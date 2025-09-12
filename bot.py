@@ -20,15 +20,33 @@ ALERT_CHANNEL_NAME = os.getenv("ALERT_CHANNEL_NAME", "").strip()
 ROLE_NAME = os.getenv("ROLE_NAME", "").strip()
 BOT_VERBOSE = os.getenv("BOT_VERBOSE", "1") == "1"
 
+# DEBUG_MODE setup to limit the bot to a specific server
 DEBUG_MODE = os.getenv("DEBUG_MODE", "False") == "True"  # Enable/disable debug mode
 DEBUG_SERVER_ID = int(os.getenv("DEBUG_SERVER_ID", "0"))  # Specify server ID for debug mode
 
-# Per-server and per-message cooldown state
-_server_message_cooldowns: Dict[int, Dict[int, float]] = {}
+BURST_MINUTES = float(os.getenv("BURST_MINUTES", 8.0))
+COOLDOWN_HOURS = float(os.getenv("COOLDOWN_HOURS", 48.0))
+
+BURST_SECONDS = int(BURST_MINUTES * 60)
+COOLDOWN_SECONDS = int(COOLDOWN_HOURS * 3600)
 
 def log(*a):
     if BOT_VERBOSE:
         print(*a, flush=True)
+    
+if not TOKEN:
+    raise SystemExit("Missing DISCORD_TOKEN in .env")
+if not ALERT_CHANNEL_NAME:
+    raise SystemExit("ALERT_CHANNEL_NAME is required in .env")
+
+intents = discord.Intents.default()
+intents.guilds = True
+client = discord.Client(intents=intents)
+
+queue: asyncio.Queue[str] = asyncio.Queue()
+
+# Per-server and per-message cooldown state
+_server_message_cooldowns: Dict[int, Dict[int, float]] = {}
 
 # ---------- Channel / Role helpers ----------
 
