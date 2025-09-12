@@ -97,7 +97,8 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
         # wait before checking again
         time.sleep(5 * 60)  # 5 minutes
 
-if __name__ == "__main__":
+
+def main():
     url1 = (
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=3&pi16=99&pi1=0&pi17=0&pa2%5B%5D=26"
@@ -109,3 +110,6 @@ if __name__ == "__main__":
 
     # monitor both Gold and Silver
     monitor_metals([url1, url2], metals=["Gold", "Silver"])
+    
+if __name__ == "__main__":
+    main()
