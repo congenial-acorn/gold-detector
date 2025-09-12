@@ -1,15 +1,3 @@
-import os
-import time
-import asyncio
-import threading
-from typing import Optional, Dict
-from pathlib import Path
-
-import discord
-from dotenv import load_dotenv, find_dotenv
-
-import gold  # gold.py must be importable (same folder or on PYTHONPATH)
-
 # Load .env (CWD first, then next to this file)
 _ = load_dotenv(find_dotenv())
 if not os.getenv("DISCORD_TOKEN"):
@@ -20,35 +8,10 @@ ALERT_CHANNEL_NAME = os.getenv("ALERT_CHANNEL_NAME", "").strip()
 ROLE_NAME = os.getenv("ROLE_NAME", "").strip()
 BOT_VERBOSE = os.getenv("BOT_VERBOSE", "1") == "1"
 
-def log(msg: str):
-    if BOT_VERBOSE:
-        print(msg, flush=True)
-        
-def _to_float(env_key: str, default: float) -> float:
-    try:
-        return float(os.getenv(env_key, str(default)))
-    except ValueError:
-        return default
-
-BURST_MINUTES = _to_float("BURST_MINUTES", 8.0)
-COOLDOWN_HOURS = _to_float("COOLDOWN_HOURS", 48.0)
-
-BURST_SECONDS = int(BURST_MINUTES * 60)
-COOLDOWN_SECONDS = int(COOLDOWN_HOURS * 3600)
-
-if not TOKEN:
-    raise SystemExit("Missing DISCORD_TOKEN in .env")
-if not ALERT_CHANNEL_NAME:
-    raise SystemExit("ALERT_CHANNEL_NAME is required in .env")
-
-intents = discord.Intents.default()
-intents.guilds = True
-client = discord.Client(intents=intents)
-
-queue: asyncio.Queue[str] = asyncio.Queue()
+DEBUG_MODE = os.getenv("DEBUG_MODE", "False") == "True"  # Enable/disable debug mode
+DEBUG_SERVER_ID = int(os.getenv("DEBUG_SERVER_ID", "0"))  # Specify server ID for debug mode
 
 # Per-server and per-message cooldown state
-# Structure: {guild_id -> {message_id -> timestamp of last send}}
 _server_message_cooldowns: Dict[int, Dict[int, float]] = {}
 
 # ---------- Channel / Role helpers ----------
@@ -64,9 +27,7 @@ async def _named_sendable_channel(guild: discord.Guild, name: str) -> Optional[d
     return None
 
 def _find_role_by_name(guild: discord.Guild) -> Optional[discord.Role]:
-    """Return a role by case-insensitive name, or None if not found.
-       NOTE: Without Manage Roles or Mention Everyone, the role must be allow-mentionable
-       for notifications to actually ping members."""
+    """Return a role by case-insensitive name, or None if not found."""
     if not ROLE_NAME:
         return None
     target = ROLE_NAME.lower()
@@ -78,21 +39,16 @@ def _find_role_by_name(guild: discord.Guild) -> Optional[discord.Role]:
 # ---------- Per-server and per-message cooldown logic ----------
 
 async def _should_send_and_update(guild_id: int, message_id: int, now: float):
-    """
-    Check and update cooldown for a specific message in a specific server.
-    Returns (allow: bool, previous_timestamp: float|None, remaining_seconds: float|None).
-    """
+    """Check and update cooldown for a specific message in a specific server."""
     if guild_id not in _server_message_cooldowns:
         _server_message_cooldowns[guild_id] = {}
 
     prev_timestamp = _server_message_cooldowns[guild_id].get(message_id)
     
     if prev_timestamp is None or now - prev_timestamp >= COOLDOWN_SECONDS:
-        # If the message doesn't have a cooldown or the cooldown has expired, allow sending
-        _server_message_cooldowns[guild_id][message_id] = now  # Update the timestamp for this message
+        _server_message_cooldowns[guild_id][message_id] = now
         return True, prev_timestamp, None
     else:
-        # Cooldown is still active, calculate remaining time
         remaining_time = COOLDOWN_SECONDS - (now - prev_timestamp)
         return False, prev_timestamp, remaining_time
 
@@ -102,7 +58,10 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int):
     now = time.time()
     guild_id = guild.id
 
-    # Check and apply cooldown for this specific message and server
+    if DEBUG_MODE and guild_id != DEBUG_SERVER_ID:
+        log(f"[DEBUG MODE] Skipping message to server {guild_id}, only sending to {DEBUG_SERVER_ID}.")
+        return  # Skip sending if not the debug server
+
     allow, prev_timestamp, remaining = await _should_send_and_update(guild_id, message_id, now)
     if not allow:
         hrs = remaining / 3600 if remaining else 0.0
@@ -118,9 +77,8 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int):
     prefix = f"{role.mention} " if role else ""
     allowed_mentions = discord.AllowedMentions(roles=True, users=False, everyone=False)
 
-    # Ensure no link embeds are shown by passing the 'allowed_mentions' argument
     try:
-        await ch.send(f"{prefix}{content}", allowed_mentions=allowed_mentions, embed=None)  # `embed=None` prevents embeds
+        await ch.send(f"{prefix}{content}", allowed_mentions=allowed_mentions)
         if prev_timestamp is None:
             log(f"[{guild.name}] Sent to #{ch.name}. (First message, burst window starts now)")
         else:
@@ -149,6 +107,9 @@ async def on_ready():
     if ROLE_NAME:
         log(f"Optional role mention: @{ROLE_NAME}")
     log(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
+
+    if DEBUG_MODE:
+        log(f"Debug Mode is ON. Only sending messages to server with ID {DEBUG_SERVER_ID}")
 
     # Wire gold.py -> async queue
     if hasattr(gold, "set_emitter"):
