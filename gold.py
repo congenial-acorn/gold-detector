@@ -21,6 +21,8 @@ def send_to_discord(message: str):
     else:
         print(f"[Discord] (noop) {message}")  # falls back to stdout if bot not wired
 
+
+
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
     market_urls = []
@@ -36,6 +38,79 @@ def get_station_market_urls(near_urls):
                 market_urls.append(f"https://inara.cz/elite/station-market/{sid}/")
     # preserve order, drop dupes
     return list(dict.fromkeys(market_urls))
+
+_TYPE_ANCHOR = re.compile(r"\b(Starport|Outpost|Surface\s+Port)\b", re.IGNORECASE)
+
+# Full pattern: Base type with optional parentheses immediately after
+_TYPE_WITH_PARENS = re.compile(
+    r"\b(Starport|Outpost|Surface\s+Port)\b(?:\s*\(([^)]+)\))?",
+    re.IGNORECASE
+)
+
+# Canonical capitalization
+_CANON = {
+    "starport": "Starport",
+    "outpost": "Outpost",
+    "surface port": "Surface Port",
+}
+
+def _canon_base(s: str) -> str:
+    return _CANON[s.lower().replace("  ", " ")]
+
+@functools.lru_cache(maxsize=512)
+def get_station_type(station_id: str) -> str:
+    
+    url = f"https://inara.cz/elite/station/{station_id}/"
+    resp = requests.get(
+        url,
+        timeout=10,
+        headers={"User-Agent": "Mozilla/5.0 (inaragold/1.0)"}
+    )
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # Anchor on the DOM text node that contains the base type word.
+    node = soup.find(string=_TYPE_ANCHOR)
+    if not node:
+        # Broader fallback: scan all matching nodes (using 'string=' to avoid deprecation)
+        for el in soup.find_all(string=_TYPE_ANCHOR):
+            node = el
+            break
+    if not node:
+        return "Unknown"
+
+    parent = node.parent
+    # --- Normal place: same element's text ---
+    context = parent.get_text(" ", strip=True)
+    m = _TYPE_WITH_PARENS.search(context)
+    if m:
+        base = _canon_base(m.group(1))
+        suffix = m.group(2)
+        return f"{base} ({suffix})" if suffix else base
+
+    # --- Surface-station case: try one more <div> after ---
+    div_anchor = parent if parent.name == "div" else parent.find_parent("div")
+    next_div = div_anchor.find_next_sibling("div") if div_anchor else None
+    if next_div:
+        ctx2 = next_div.get_text(" ", strip=True)
+        # Best case: the next div repeats the base type with parentheses
+        m2 = _TYPE_WITH_PARENS.search(ctx2)
+        if m2:
+            base = _canon_base(m2.group(1))
+            suffix = m2.group(2)
+            return f"{base} ({suffix})" if suffix else base
+
+        # Otherwise, we already know the base type from the anchor; just harvest parentheses
+        paren = re.search(r"\(([^)]+)\)", ctx2)
+        base = _canon_base(_TYPE_ANCHOR.search(node).group(1))
+        if paren:
+            return f"{base} ({paren.group(1)})"
+        return base
+
+    # Fallback: return just the base type we anchored on
+    base = _canon_base(_TYPE_ANCHOR.search(node).group(1))
+    return base
+
 
 def monitor_metals(near_urls, metals, cooldown_hours=0):
     # key = f"{station_id}-{metal_name}"
@@ -62,12 +137,9 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
             st_name       = a_tags[0].get_text(strip=True)
             system_name   = a_tags[1].get_text(strip=True)
             system_address= f"https://inara.cz{a_tags[1]['href']}"
+            st_type = get_station_type(station_id)
 
-            # 2) Station type is the text right below the H2, e.g. "Refinery (Alliance Democracy)"
-            st_type_text = soup.find(string=re.compile(r'^[A-Za-z ]+\s*\(.+\)$'))
-            st_type = st_type_text.split("(",1)[0].strip() if st_type_text else "Unknown"
-
-            # 3) For each metal
+            # 2) For each metal
             for metal in metals:
                 link = soup.find("a", string=metal)
                 if not link:
