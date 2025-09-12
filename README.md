@@ -11,6 +11,7 @@ But there are stations that are hidden from Inara. Because the site depends on u
 This bot will detect the stations that are in infrastructure failure but without an updated market. So they will have ample stocks of gold for you to profit.
 
 Note: when you get to the station you will see the stock is much lower then the bot reported. The stock will actually refill over time so do not worry.
+Note 2: You may read about other effects of BGS on markets here https://cdb.sotl.org.uk/effects
 
 ## Bot Setup
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151&permissions=2048&integration_type=0&scope=bot
