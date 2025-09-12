@@ -1,25 +1,25 @@
 import re
 import time
 import datetime
-import os
 from datetime import timezone
 import requests
 from bs4 import BeautifulSoup
 
+# ← set your webhook here
 
-# Mark-and-print helper so the bot forwards only what you choose
-DISCORD_PREFIX = "__DISCORD__"
-PING_TOKEN = os.getenv("PING_TOKEN", "[PING]")
+_emit = None  # set by the bot at runtime
 
+def set_emitter(func):
+    """Bot calls this to register a simple, thread-safe 'emit(message: str)' function."""
+    global _emit
+    _emit = func
 
-def send_to_bot(message: str, *, ping: bool = False):
-    """Prints a marked line that the bot forwards. Set ping=True to request a role mention."""
-    if ping:
-        print(f"{DISCORD_PREFIX} {PING_TOKEN} {message}", flush=True)
+def send_to_discord(message: str):
+    """gold.py will keep calling this. The bot provides the real emitter."""
+    if _emit is not None:
+        _emit(message)
     else:
-        print(f"{DISCORD_PREFIX} {message}", flush=True)
-
-
+        print(f"[Discord] (noop) {message}")  # falls back to stdout if bot not wired
 
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
@@ -87,9 +87,9 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
                         msg = (
                             f"Hidden market detected at {st_name}, {url}\n"
                             f"System: {system_name}, {system_address}\n"
-                            f"Stock: {stock}"
+                            f"{metal} stock: {stock}"
                         )
-                        send_to_bot(msg, ping=True)
+                        send_to_discord(msg)
                         last_ping[key] = now
                         print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
@@ -97,7 +97,8 @@ def monitor_metals(near_urls, metals, cooldown_hours=48):
         # wait before checking again
         time.sleep(5 * 60)  # 5 minutes
 
-if __name__ == "__main__":
+
+def main():
     url1 = (
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=3&pi16=99&pi1=0&pi17=0&pa2%5B%5D=26"
@@ -109,3 +110,6 @@ if __name__ == "__main__":
 
     # monitor both Gold and Silver
     monitor_metals([url1, url2], metals=["Gold", "Silver"])
+    
+if __name__ == "__main__":
+    main()

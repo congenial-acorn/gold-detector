@@ -1,248 +1,104 @@
 import os
-import sys
 import asyncio
-from pathlib import Path
+import threading
+from typing import Optional
 
 import discord
-from discord import AllowedMentions
 from dotenv import load_dotenv
-from collections import deque
-def _bool(name: str, default: str = "false") -> bool:
-    return os.getenv(name, default).strip().lower() in ("1","true","yes","y","on")
 
-FORWARD_STDERR_ALWAYS = _bool("FORWARD_STDERR_ALWAYS", "true")
-CRASH_TAIL_LINES = int(os.getenv("CRASH_TAIL_LINES", "50"))
+import gold  # gold.py must be importable (same folder or on PYTHONPATH)
 
-# ---------------- Config ----------------
 load_dotenv()
 
-def _bool(name: str, default: str = "false") -> bool:
-    return os.getenv(name, default).strip().lower() in ("1","true","yes","y","on")
+TOKEN = os.getenv("DISCORD_TOKEN")
+ROLE_NAME = os.getenv("ROLE_NAME", "").strip()
+BOT_VERBOSE = os.getenv("BOT_VERBOSE", "1") == "1"
 
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-if not TOKEN:
-    raise SystemExit("Missing DISCORD_BOT_TOKEN in .env")
-
-# Resolve SCRIPT_PATH relative to this file so it works no matter where you run from
-_raw_script = os.getenv("SCRIPT_PATH", "scripts/gold.py")
-SCRIPT_PATH = Path(_raw_script)
-if not SCRIPT_PATH.is_absolute():
-    SCRIPT_PATH = (Path(__file__).parent / SCRIPT_PATH).resolve()
-
-PREFIX = os.getenv("DISCORD_PREFIX", "__DISCORD__")
-FORWARD_ALL = _bool("FORWARD_ALL", "false")
-ANNOUNCE_SYSTEM = _bool("ANNOUNCE_SYSTEM", "false")
-
-# Ping config
-PING_ROLE_ID = int(os.getenv("PING_ROLE_ID", "0") or "0")
-PING_ROLE_NAME = os.getenv("PING_ROLE_NAME", "")  # fallback if ID not set/found
-PING_ALWAYS = _bool("PING_ALWAYS", "false")
-PING_TOKEN = os.getenv("PING_TOKEN", "[PING]").strip()
-
-RESTART_DELAY_SECS = 5
-
-# --------------- Discord Client ---------------
-intents = discord.Intents.none()
-intents.guilds = True  # we only need to know which guilds we're in
+intents = discord.Intents.default()
+intents.guilds = True  # we only need guild info to find channels
 client = discord.Client(intents=intents)
 
-# guild_id -> channel to post in
-targets: dict[int, discord.abc.Messageable] = {}
-# guild_id -> discord.Role (to ping) or None
-ping_roles: dict[int, discord.Role | None] = {}
+queue: asyncio.Queue[str] = asyncio.Queue()
 
-def _pick_channel(guild: discord.Guild):
-    """Prefer system channel, else first text channel we can send to."""
-    me = guild.me
-    def can_send(ch: discord.TextChannel):
-        try:
-            return ch.permissions_for(me).send_messages
-        except Exception:
-            return False
-    if guild.system_channel and can_send(guild.system_channel):
-        return guild.system_channel
-    for ch in guild.text_channels:
-        if can_send(ch):
+def log(*a):
+    if BOT_VERBOSE:
+        print(*a, flush=True)
+
+async def _first_sendable_channel(guild: discord.Guild) -> Optional[discord.TextChannel]:
+    """Return the first text channel (by position, then id) the bot can view & send to."""
+    for ch in sorted(guild.text_channels, key=lambda c: (c.position, c.id)):
+        perms = ch.permissions_for(guild.me)
+        if perms.view_channel and perms.send_messages:
             return ch
     return None
 
-def _resolve_ping_role(guild: discord.Guild) -> discord.Role | None:
-    # 1) Try explicit role ID
-    if PING_ROLE_ID:
-        r = guild.get_role(PING_ROLE_ID)
-        if r:
+def _find_role_by_name(guild: discord.Guild) -> Optional[discord.Role]:
+    """Return a role by case-insensitive name, or None if not found.
+       NOTE: Without Manage Roles or Mention Everyone, the role must be allow-mentionable
+       for notifications to actually ping members."""
+    if not ROLE_NAME:
+        return None
+    target = ROLE_NAME.lower()
+    for r in guild.roles:
+        if r.name.lower() == target:
             return r
-    # 2) Try by name (case-insensitive)
-    if PING_ROLE_NAME:
-        low = PING_ROLE_NAME.lower()
-        for r in guild.roles:
-            if r.name.lower() == low:
-                return r
     return None
 
-async def _refresh_targets_and_roles():
-    for g in client.guilds:
-        # choose a channel
-        if g.id not in targets or targets[g.id] is None:
-            ch = _pick_channel(g)
-            if ch:
-                targets[g.id] = ch
-
-        # resolve role
-        role = _resolve_ping_role(g)
-        ping_roles[g.id] = role
-
-        # one-line debug so you can see what the bot found
-        try:
-            print(
-                f"[ping-debug] guild={g.name}({g.id}) "
-                f"channel={getattr(targets.get(g.id), 'name', None)} "
-                f"role={'None' if role is None else f'{role.name}({role.id})'} "
-                f"role_mentionable={'-' if role is None else role.mentionable} "
-                f"bot_can_mention_all={g.me.guild_permissions.mention_everyone}"
-            )
-        except Exception:
-            pass
-
-async def _safe_send(ch: discord.abc.Messageable, text: str, *, allow_role_mentions: bool = False):
-    if not text:
+async def _send_to_guild(guild: discord.Guild, content: str):
+    ch = await _first_sendable_channel(guild)
+    if not ch:
+        log(f"[{guild.name}] No sendable channel found; skipping.")
         return
-    # Discord hard limit: 2000 chars. We pass AllowedMentions per-send.
-    am = AllowedMentions(roles=allow_role_mentions, users=False, everyone=False)
-    for i in range(0, len(text), 2000):
-        try:
-            await ch.send(text[i:i+2000], allowed_mentions=am)
-        except Exception:
-            pass
 
-async def _send_with_optional_ping(guild_id: int, text: str, do_ping: bool):
-    ch = targets.get(guild_id)
-    if not ch or not text:
-        return
-    role = ping_roles.get(guild_id)
-    if do_ping and role is not None:
-        mention = role.mention + " "
-        # First chunk includes the mention; subsequent chunks are plain.
-        first_chunk = text[: (2000 - len(mention))]
-        await _safe_send(ch, mention + first_chunk, allow_role_mentions=True)
-        rest = text[len(first_chunk):]
-        if rest:
-            await _safe_send(ch, rest, allow_role_mentions=False)
-    else:
-        await _safe_send(ch, text, allow_role_mentions=False)
+    role = _find_role_by_name(guild)
+    prefix = f"{role.mention} " if role else ""
+    allowed = discord.AllowedMentions(roles=True, users=False, everyone=False)
+    await ch.send(f"{prefix}{content}", allowed_mentions=allowed)
 
-async def _broadcast(text: str, *, do_ping: bool):
-    await _refresh_targets_and_roles()
-    await asyncio.gather(*(_send_with_optional_ping(gid, text, do_ping) for gid in targets.keys()))
-
-# --------------- Runner: gold.py ---------------
-async def _run_and_stream():
-    """Run gold.py unbuffered and forward its output according to rules, with stderr/crash help."""
-    print(f"[bot] runner watching: {SCRIPT_PATH}")
-
+async def _dispatcher_loop():
+    await client.wait_until_ready()
     while True:
+        msg = await queue.get()
         try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-u", str(SCRIPT_PATH),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            )
-            if ANNOUNCE_SYSTEM:
-                await _broadcast(f"▶️ Started `{SCRIPT_PATH.name}`", do_ping=False)
-            else:
-                print(f"[bot] started {SCRIPT_PATH.name}")
-        except Exception as e:
-            msg = f"❌ Failed to start script: {e}. Retrying in {RESTART_DELAY_SECS}s…"
-            if ANNOUNCE_SYSTEM:
-                await _broadcast(msg, do_ping=False)
-            print("[bot]", msg)
-            await asyncio.sleep(RESTART_DELAY_SECS)
-            continue
+            tasks = [asyncio.create_task(_send_to_guild(g, msg)) for g in client.guilds]
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            queue.task_done()
 
-        # Keep the last N stderr lines for crash summary
-        stderr_tail = deque(maxlen=max(0, CRASH_TAIL_LINES))
-
-        async def pump(stream: asyncio.StreamReader, label: str):
-            while True:
-                line = await stream.readline()
-                if not line:
-                    break
-                text = line.decode(errors="replace").rstrip("\r\n")
-            
-                # Normalize: strip optional PREFIX first, then optional PING_TOKEN.
-                content = text
-                stripped = False
-                do_ping = False
-            
-                # 1) Strip the forwarding prefix if present
-                if content.startswith(PREFIX):
-                    content = content[len(PREFIX):].lstrip()
-                    stripped = True
-            
-                # 2) Detect & strip the ping token (after prefix, or at start if no prefix)
-                if content.startswith(PING_TOKEN):
-                    content = content[len(PING_TOKEN):].lstrip()
-                    do_ping = True
-                    stripped = True
-            
-                # 3) Always-ping override
-                if PING_ALWAYS:
-                    do_ping = True
-            
-                # Decide what to send
-                if FORWARD_ALL:
-                    # Mirror everything, but if we recognized/stripped markers use cleaned content.
-                    out = content if stripped else text
-                    await _broadcast(f"[{label}] {out}", do_ping=do_ping)
-                else:
-                    # Prefix-gated mode: only forward when the prefix was present.
-                    if text.startswith(PREFIX):
-                        await _broadcast(content, do_ping=do_ping)
-                    else:
-                        # (Optional) keep your stderr forwarding here if you added it earlier
-                        pass
-
-
-        # On exit: show a compact crash report with the last N stderr lines
-        if CRASH_TAIL_LINES > 0:
-            tail = "\n".join(stderr_tail)
-            if tail:
-                # wrap tail in a code block to keep it readable
-                summary = (
-                    f"💥 `{SCRIPT_PATH.name}` exited with code `{rc}`.\n"
-                    f"Last {len(stderr_tail)} stderr lines:\n"
-                    f"```\n{tail[-1900:]}\n```"
-                )
-                await _broadcast(summary, do_ping=False)
-            else:
-                await _broadcast(f"💥 `{SCRIPT_PATH.name}` exited with code `{rc}` (no stderr).", do_ping=False)
-        else:
-            if ANNOUNCE_SYSTEM:
-                await _broadcast(f"⏹️ `{SCRIPT_PATH.name}` exited with code `{rc}`.", do_ping=False)
-
-        print(f"[bot] process exited; restarting in {RESTART_DELAY_SECS}s…")
-        await asyncio.sleep(RESTART_DELAY_SECS)
-
-# --------------- Events ---------------
 @client.event
 async def on_ready():
-    print(f"[bot] logged in as {client.user}")
-    await _refresh_targets_and_roles()
-    if ANNOUNCE_SYSTEM:
-        await _broadcast(f"🤖 Ready. Forwarding lines starting with `{PREFIX}`.", do_ping=False)
-    client.loop.create_task(_run_and_stream())
+    log(f"✅ Logged in as {client.user} (id={client.user.id})")
 
-@client.event
-async def on_guild_join(guild: discord.Guild):
-    # Prepare channel/role for this guild
-    await _refresh_targets_and_roles()
-    ch = targets.get(guild.id)
-    if ch and ANNOUNCE_SYSTEM:
-        await _safe_send(ch, "👋 Thanks for inviting me! I’ll post marked messages here.", allow_role_mentions=False)
+    # Wire gold.py -> async queue
+    if hasattr(gold, "set_emitter"):
+        gold.set_emitter(lambda m: queue.put_nowait(m))
+        log("Emitter registered via gold.set_emitter(...)")
+    else:
+        # Fallback: monkey-patch if gold already defines send_to_discord (same-process only)
+        if hasattr(gold, "send_to_discord") and callable(getattr(gold, "send_to_discord")):
+            setattr(gold, "send_to_discord", lambda m: queue.put_nowait(m))
+            log("Emitter installed by monkey-patching gold.send_to_discord(...)")
+        else:
+            log("WARNING: gold.py lacks set_emitter()/send_to_discord(); add the shim shown earlier.")
 
-# --------------- Main ---------------
+    # Start gold.py forever inside this process (so it's always running with the bot)
+    def run_gold_forever():
+        try:
+            if hasattr(gold, "main") and callable(getattr(gold, "main")):
+                gold.main()  # your long-running loop lives here
+            else:
+                log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
+        except Exception as e:
+            log(f"[gold.py] exited with error: {e}")
+
+    threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
+    log("Started gold.py in background thread.")
+
+    # Start dispatcher that relays messages to all guilds
+    asyncio.create_task(_dispatcher_loop())
+
 if __name__ == "__main__":
-    if not SCRIPT_PATH.exists():
-        print(f"[bot] WARNING: Script not found at {SCRIPT_PATH}")
+    if not TOKEN:
+        raise SystemExit("Missing DISCORD_TOKEN in .env")
     client.run(TOKEN)
