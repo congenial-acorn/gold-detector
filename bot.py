@@ -118,8 +118,9 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int):
     prefix = f"{role.mention} " if role else ""
     allowed_mentions = discord.AllowedMentions(roles=True, users=False, everyone=False)
 
+    # Ensure no link embeds are shown by passing the 'allowed_mentions' argument
     try:
-        await ch.send(f"{prefix}{content}", allowed_mentions=allowed_mentions)
+        await ch.send(f"{prefix}{content}", allowed_mentions=allowed_mentions, embed=None)  # `embed=None` prevents embeds
         if prev_timestamp is None:
             log(f"[{guild.name}] Sent to #{ch.name}. (First message, burst window starts now)")
         else:
