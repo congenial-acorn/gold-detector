@@ -164,30 +164,45 @@ async def _run_and_stream():
         stderr_tail = deque(maxlen=max(0, CRASH_TAIL_LINES))
 
         async def pump(stream: asyncio.StreamReader, label: str):
-            while True:
-                line = await stream.readline()
-                if not line:
-                    break
-                text = line.decode(errors="replace").rstrip("\r\n")
+    while True:
+        line = await stream.readline()
+        if not line:
+            break
+        text = line.decode(errors="replace").rstrip("\r\n")
 
-                # Track stderr for crash summaries
-                if label == "stderr" and CRASH_TAIL_LINES > 0:
-                    stderr_tail.append(text)
+        # Normalize: strip optional PREFIX first, then optional PING_TOKEN.
+        content = text
+        stripped = False
+        do_ping = False
 
-                if FORWARD_ALL:
-                    await _broadcast(f"[{label}] {text}", do_ping=False)
-                else:
-                    if label == "stderr" and FORWARD_STDERR_ALWAYS:
-                        # Always show stderr lines to surface errors
-                        await _broadcast(f"[stderr] {text}", do_ping=False)
-                        continue
-                    # normal prefixed-forwarding for stdout/stderr
-                    if text.startswith(PREFIX):
-                        await _broadcast(text[len(PREFIX):].lstrip(), do_ping=False)
+        # 1) Strip the forwarding prefix if present
+        if content.startswith(PREFIX):
+            content = content[len(PREFIX):].lstrip()
+            stripped = True
 
-        # Pump both streams; wait for process exit
-        await asyncio.gather(pump(proc.stdout, "stdout"), pump(proc.stderr, "stderr"))
-        rc = proc.returncode
+        # 2) Detect & strip the ping token (after prefix, or at start if no prefix)
+        if content.startswith(PING_TOKEN):
+            content = content[len(PING_TOKEN):].lstrip()
+            do_ping = True
+            stripped = True
+
+        # 3) Always-ping override
+        if PING_ALWAYS:
+            do_ping = True
+
+        # Decide what to send
+        if FORWARD_ALL:
+            # Mirror everything, but if we recognized/stripped markers use cleaned content.
+            out = content if stripped else text
+            await _broadcast(f"[{label}] {out}", do_ping=do_ping)
+        else:
+            # Prefix-gated mode: only forward when the prefix was present.
+            if text.startswith(PREFIX):
+                await _broadcast(content, do_ping=do_ping)
+            else:
+                # (Optional) keep your stderr forwarding here if you added it earlier
+                pass
+
 
         # On exit: show a compact crash report with the last N stderr lines
         if CRASH_TAIL_LINES > 0:
