@@ -3,6 +3,7 @@ import time
 import datetime
 from datetime import timezone
 import requests
+import functools
 from bs4 import BeautifulSoup
 
 # ← set your webhook here
@@ -137,7 +138,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
             st_name       = a_tags[0].get_text(strip=True)
             system_name   = a_tags[1].get_text(strip=True)
             system_address= f"https://inara.cz{a_tags[1]['href']}"
-            st_type = get_station_type(station_id)
+            
 
             # 2) For each metal
             for metal in metals:
@@ -152,6 +153,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                 print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                 if buy_price > 28_000 and stock > 19_000:
                     station_id = re.search(r'/(\d+)/$', url).group(1)
+                    st_type = get_station_type(station_id)
                     key = f"{station_id}-{metal}"
                     last_time = last_ping.get(key)
                     if not last_time or (now - last_time) > datetime.timedelta(hours=cooldown_hours):
