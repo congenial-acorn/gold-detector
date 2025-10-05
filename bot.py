@@ -174,9 +174,9 @@ async def on_ready():
             except KeyboardInterrupt:
                 raise  # allow clean shutdowns
             except BaseException as e:  # catches SystemExit too
-            s = str(e)
-            if "429" in s:
-                log(f"[gold.py] HTTP 429 Too Many Requests; backing off {backoff}s...")
+                s = str(e)
+                if "429" in s:
+                    log(f"[gold.py] HTTP 429 Too Many Requests; backing off {backoff}s...")
             else:
                 log(f"[gold.py] crashed: {e}; restarting in {backoff}s...")
             time.sleep(backoff)
