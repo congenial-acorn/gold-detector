@@ -182,7 +182,8 @@ async def on_ready():
                 time.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)  # Exponential backoff with cap
 
-
+    threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
+    log("Started gold.py in background thread.")
     # Start dispatcher
     asyncio.create_task(_dispatcher_loop())
 
