@@ -171,16 +171,16 @@ async def on_ready():
                 else:
                     log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
                     break  # Exit if no main() exists
-            except Exception as e:
-                # Handle HTTP 429 separately if you want
-                err_msg = str(e)
-                if "429" in err_msg:
-                    log(f"[gold.py] HTTP 429 Too Many Requests: backing off for {backoff}s...")
-                else:
-                    log(f"[gold.py] exited with error: {e}, restarting in {backoff}s...")
-    
-                time.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)  # Exponential backoff with cap
+            except KeyboardInterrupt:
+            raise  # allow clean shutdowns
+            except BaseException as e:  # catches SystemExit too
+            s = str(e)
+            if "429" in s:
+                log(f"[gold.py] HTTP 429 Too Many Requests; backing off {backoff}s...")
+            else:
+                log(f"[gold.py] crashed: {e}; restarting in {backoff}s...")
+            time.sleep(backoff)
+            backoff = min(backoff * 2, max_backoff)
 
     threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
     log("Started gold.py in background thread.")
