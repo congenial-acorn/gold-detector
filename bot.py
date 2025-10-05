@@ -172,7 +172,7 @@ async def on_ready():
                     log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
                     break  # Exit if no main() exists
             except KeyboardInterrupt:
-            raise  # allow clean shutdowns
+                raise  # allow clean shutdowns
             except BaseException as e:  # catches SystemExit too
             s = str(e)
             if "429" in s:
