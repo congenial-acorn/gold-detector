@@ -158,16 +158,30 @@ async def on_ready():
 
     # Start gold.py forever inside this process (so it's always running with the bot)
     def run_gold_forever():
-        try:
-            if hasattr(gold, "main") and callable(getattr(gold, "main")):
-                gold.main()  # your long-running loop lives here
-            else:
-                log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
-        except Exception as e:
-            log(f"[gold.py] exited with error: {e}")
+        max_backoff = 3600  # Maximum backoff in seconds (1 hour)
+        base_backoff = 5   # Initial backoff in seconds
+        backoff = base_backoff
+    
+        while True:
+            try:
+                if hasattr(gold, "main") and callable(getattr(gold, "main")):
+                    gold.main()  # This is your long-running function
+                    # If gold.main() returns normally, reset backoff
+                    backoff = base_backoff
+                else:
+                    log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
+                    break  # Exit if no main() exists
+            except Exception as e:
+                # Handle HTTP 429 separately if you want
+                err_msg = str(e)
+                if "429" in err_msg:
+                    log(f"[gold.py] HTTP 429 Too Many Requests: backing off for {backoff}s...")
+                else:
+                    log(f"[gold.py] exited with error: {e}, restarting in {backoff}s...")
+    
+                time.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)  # Exponential backoff with cap
 
-    threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
-    log("Started gold.py in background thread.")
 
     # Start dispatcher
     asyncio.create_task(_dispatcher_loop())
