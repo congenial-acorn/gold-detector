@@ -169,7 +169,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
 
         # wait before checking again
-        time.sleep(10 * 60)  # 5 minutes
+        time.sleep(30 * 60)  # 30 minutes
 
 
 def main():
