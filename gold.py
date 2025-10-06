@@ -167,6 +167,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                         last_ping[key] = now
                         print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
+                time.sleep(10)
 
         # wait before checking again
         time.sleep(30 * 60)  # 30 minutes
