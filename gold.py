@@ -2,11 +2,13 @@ import re
 import time
 import datetime
 from datetime import timezone
+import os
+import threading
 import requests
 import functools
 from bs4 import BeautifulSoup
 
-# ← set your webhook here
+# ---- EMITTER WIRING ---------------------------------------------------------
 
 _emit = None  # set by the bot at runtime
 
@@ -23,14 +25,78 @@ def send_to_discord(message: str):
         print(f"[Discord] (noop) {message}")  # falls back to stdout if bot not wired
 
 
+# ---- GLOBAL HTTP THROTTLE + BACKOFF -----------------------------------------
+
+# Seconds to wait between ANY two outbound HTTP calls (min spacing)
+# You can override via env: GOLD_HTTP_COOLDOWN=1.5
+_RATE_LIMIT_SECONDS = float(os.getenv("GOLD_HTTP_COOLDOWN", "1.0"))
+
+# Optional absolute timeout per request (seconds)
+_HTTP_TIMEOUT = float(os.getenv("GOLD_HTTP_TIMEOUT", "15"))
+
+# Max extra backoff after 429 (seconds)
+_MAX_BACKOFF = float(os.getenv("GOLD_HTTP_MAX_BACKOFF", "60"))
+
+# Shared session & throttle state
+_SESSION = requests.Session()
+_DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (inaragold/1.0)"}
+_last_http_call = 0.0
+_rl_lock = threading.Lock()
+
+def http_get(url: str, *, headers=None, timeout=None):
+    """
+    Throttled GET:
+      • Enforces at least _RATE_LIMIT_SECONDS spacing between ALL HTTP calls.
+      • If 429 is received, honors Retry-After (if present) or uses exponential backoff.
+    """
+    global _last_http_call
+
+    # Enforce global cooldown between calls
+    with _rl_lock:
+        now = time.monotonic()
+        wait = max(0.0, (_last_http_call + _RATE_LIMIT_SECONDS) - now)
+    if wait > 0:
+        time.sleep(wait)
+
+    # Merge headers
+    merged_headers = dict(_DEFAULT_HEADERS)
+    if headers:
+        merged_headers.update(headers)
+
+    # Backoff settings for 429
+    backoff = 2.0
+    timeout = _HTTP_TIMEOUT if timeout is None else timeout
+
+    while True:
+        resp = _SESSION.get(url, headers=merged_headers, timeout=timeout)
+        # mark call time on ANY attempt (even if not 200)
+        with _rl_lock:
+            _last_http_call = time.monotonic()
+
+        if resp.status_code == 429:
+            # Respect Retry-After if provided; otherwise exponential backoff
+            retry_after = resp.headers.get("Retry-After")
+            try:
+                delay = float(retry_after) if retry_after is not None else backoff
+            except ValueError:
+                delay = backoff
+            delay = min(delay, _MAX_BACKOFF)
+            time.sleep(delay)
+            backoff = min(backoff * 2.0, _MAX_BACKOFF)
+            continue
+
+        resp.raise_for_status()
+        return resp
+
+
+# ---- PARSERS & HELPERS ------------------------------------------------------
 
 def get_station_market_urls(near_urls):
     """From nearest‐stations pages, pull every /station-market/<id>/ link once."""
     market_urls = []
     pattern = re.compile(r'^/elite/station/(\d+)/$')
     for url in near_urls:
-        resp = requests.get(url)
-        resp.raise_for_status()
+        resp = http_get(url)
         soup = BeautifulSoup(resp.text, "html.parser")
         for a in soup.find_all("a", href=True):
             m = pattern.match(a["href"])
@@ -60,14 +126,12 @@ def _canon_base(s: str) -> str:
 
 @functools.lru_cache(maxsize=512)
 def get_station_type(station_id: str) -> str:
-    
     url = f"https://inara.cz/elite/station/{station_id}/"
-    resp = requests.get(
+    resp = http_get(
         url,
         timeout=10,
         headers={"User-Agent": "Mozilla/5.0 (inaragold/1.0)"}
     )
-    resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
     # Anchor on the DOM text node that contains the base type word.
@@ -113,6 +177,8 @@ def get_station_type(station_id: str) -> str:
     return base
 
 
+# ---- MAIN LOOP --------------------------------------------------------------
+
 def monitor_metals(near_urls, metals, cooldown_hours=0):
     # key = f"{station_id}-{metal_name}"
     last_ping = {}  # key -> datetime of last ping
@@ -128,8 +194,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
             if station_id not in alive_ids:
                 del last_ping[key]
         for url in market_urls:
-            resp = requests.get(url)
-            resp.raise_for_status()
+            resp = http_get(url)
             soup = BeautifulSoup(resp.text, "html.parser")
 
             # 1) Station & System info from the <h2>
@@ -138,7 +203,6 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
             st_name       = a_tags[0].get_text(strip=True)
             system_name   = a_tags[1].get_text(strip=True)
             system_address= f"https://inara.cz{a_tags[1]['href']}"
-            
 
             # 2) For each metal
             for metal in metals:
@@ -167,7 +231,6 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                         last_ping[key] = now
                         print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
-                time.sleep(10)
 
         # wait before checking again
         time.sleep(30 * 60)  # 30 minutes
@@ -186,21 +249,20 @@ def main():
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=3&pi16=2&pa2%5B%5D=26"
     )
-    url4 = ( 
+    url4 = (
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=6&pi16=2&pi1=0&pi17=0&pa2%5B%5D=26"
     )
     url5 = (
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=3&pi16=14&ps2=&pa2%5B%5D=26"
-        
     )
-    url6= (
+    url6 = (
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=6&pi16=14&ps2=&pa2%5B%5D=26"
     )
-    # monitor both Gold and Silver
+    # monitor Gold (add "Silver" if needed)
     monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold"])
-    
+
 if __name__ == "__main__":
     main()
