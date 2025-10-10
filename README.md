@@ -1,5 +1,5 @@
 ## STATUS
-The bot is currently not functioning. This will be resolved as soon as possible. Last updated: 10/8, 2:57 PM UTC
+The bot is currently not functioning. A fix has been implemented and will soon be deployed. Last updated: 10/10, 6:07 PM UTC
 # Gold Detector Discord Bot
 Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151
 
