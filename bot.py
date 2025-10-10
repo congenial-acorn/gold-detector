@@ -158,29 +158,18 @@ async def on_ready():
 
     # Start gold.py forever inside this process (so it's always running with the bot)
     def run_gold_forever():
-        max_backoff = 3600  # Maximum backoff in seconds (1 hour)
-        base_backoff = 5   # Initial backoff in seconds
+        max_backoff, base_backoff = 3600, 5
         backoff = base_backoff
-    
         while True:
             try:
-                if hasattr(gold, "main") and callable(getattr(gold, "main")):
-                    gold.main()  # This is your long-running function
-                    # If gold.main() returns normally, reset backoff
-                    backoff = base_backoff
-                else:
-                    log("ERROR: gold.py has no main(); move your __main__ code into a main() function.")
-                    break  # Exit if no main() exists
+                gold.main()
+                backoff = base_backoff
             except KeyboardInterrupt:
-                raise  # allow clean shutdowns
-            except BaseException as e:  # catches SystemExit too
-                s = str(e)
-                if "429" in s:
-                    log(f"[gold.py] HTTP 429 Too Many Requests; backing off {backoff}s...")
-            else:
+                raise
+            except BaseException as e:
                 log(f"[gold.py] crashed: {e}; restarting in {backoff}s...")
-            time.sleep(backoff)
-            backoff = min(backoff * 2, max_backoff)
+                time.sleep(backoff)
+                backoff = min(backoff * 2, max_backoff)
 
     threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
     log("Started gold.py in background thread.")
