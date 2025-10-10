@@ -3,6 +3,11 @@
 .env.*
 !.env.example        # keep a template in the repo
 .envrc
+# storage files
+dm_subscribers.json
+guild_optout.json
+server_cooldowns.json
+user_cooldowns.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
