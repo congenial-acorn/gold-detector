@@ -48,6 +48,88 @@ queue: asyncio.Queue[str] = asyncio.Queue()
 # Per-server and per-message cooldown state
 _server_message_cooldowns: Dict[int, Dict[int, float]] = {}
 
+# DM logic
+SUBS_FILE = Path(__file__).with_name("dm_subscribers.json")
+
+# Load/save helpers
+def _load_subs() -> set[int]:
+    try:
+        with open(SUBS_FILE, "r") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+def _save_subs(subs: set[int]):
+    try:
+        with open(SUBS_FILE, "w") as f:
+            json.dump(sorted(subs), f)
+    except Exception as e:
+        log(f"[subs] save error: {e}")
+
+# in-memory subscriber set
+_dm_subscribers: set[int] = _load_subs()
+
+# Slash command tree bound to the existing Client
+tree = app_commands.CommandTree(client)
+
+# --- Slash commands (usable in DMs too) ---
+
+@tree.command(name="alerts_on", description="DM me future alerts")
+@app_commands.checks.cooldown(1, 5)  # simple spam guard
+async def alerts_on(interaction: discord.Interaction):
+    try:
+        user_id = interaction.user.id
+        _dm_subscribers.add(user_id)
+        _save_subs(_dm_subscribers)
+        # ensure we can DM now
+        try:
+            await interaction.user.send("✅ Subscribed. I’ll DM you future alerts.")
+        except Exception:
+            # Just in case DMs are blocked; still ack the slash command
+            pass
+        await interaction.response.send_message("You’re subscribed to DMs. (If you didn’t get a DM, check your privacy settings.)", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"Couldn’t subscribe: {e}", ephemeral=True)
+
+@tree.command(name="alerts_off", description="Stop DMs")
+@app_commands.checks.cooldown(1, 5)
+async def alerts_off(interaction: discord.Interaction):
+    try:
+        user_id = interaction.user.id
+        _dm_subscribers.discard(user_id)
+        _save_subs(_dm_subscribers)
+        await interaction.response.send_message("You’re unsubscribed. No more DMs.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"Couldn’t unsubscribe: {e}", ephemeral=True)
+
+# Optional: a simple /ping that works in DMs too
+@tree.command(name="ping", description="Check if the bot is alive")
+async def ping_cmd(interaction: discord.Interaction):
+    await interaction.response.send_message("Pong!", ephemeral=True)
+
+# --- helper to DM all subscribers when gold.py emits a message ---
+
+async def _dm_subscribers_broadcast(content: str):
+    # Avoid embeds in DMs if you prefer (suppress by wrapping with < > or just send plain)
+    allowed_mentions = AllowedMentions.none()
+    # Copy into a list to avoid set size change during iteration
+    targets = list(_dm_subscribers)
+    if not targets:
+        return
+    # fan out with gentle concurrency
+    async def _send_one(uid: int):
+        try:
+            user = await client.fetch_user(uid)
+            # If they blocked DMs or we have no mutual context, this can fail
+            await user.send(content, allowed_mentions=allowed_mentions)
+        except Exception as e:
+            # If hard failure persists, optionally drop them
+            if "Cannot send messages to this user" in str(e):
+                # Comment out next two lines if you don't want auto-prune
+                _dm_subscribers.discard(uid)
+                _save_subs(_dm_subscribers)
+    await asyncio.gather(*[asyncio.create_task(_send_one(uid)) for uid in targets], return_exceptions=True)
+
 # ---------- Channel / Role helpers ----------
 
 async def _named_sendable_channel(guild: discord.Guild, name: str) -> Optional[discord.TextChannel]:
@@ -126,11 +208,14 @@ async def _dispatcher_loop():
     await client.wait_until_ready()
     while True:
         msg = await queue.get()
-        message_id = hash(msg)  # Use the hash of the message content as its unique ID
         try:
-            tasks = [asyncio.create_task(_send_to_guild(g, msg, message_id)) for g in client.guilds]
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+            # existing per-guild send tasks...
+            guild_tasks = [asyncio.create_task(_send_to_guild(g, msg, hash(msg))) for g in client.guilds]
+
+            # NEW: also DM any subscribed users
+            dm_task = asyncio.create_task(_dm_subscribers_broadcast(msg))
+
+            await asyncio.gather(*(guild_tasks + [dm_task]), return_exceptions=True)
         finally:
             queue.task_done()
 
@@ -155,7 +240,12 @@ async def on_ready():
             log("Emitter installed by monkey-patching gold.send_to_discord(...)")
         else:
             log("WARNING: gold.py lacks set_emitter()/send_to_discord(); add the shim shown below.")
-
+    try:
+        # make slash commands available globally (works in DMs if dm_permission=True)
+        await tree.sync()
+        log("Slash commands synced.")
+    except Exception as e:
+        log(f"Slash command sync failed: {e}")
     # Start gold.py forever inside this process (so it's always running with the bot)
     def run_gold_forever():
         max_backoff, base_backoff = 3600, 5
