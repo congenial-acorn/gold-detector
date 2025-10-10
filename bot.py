@@ -49,23 +49,6 @@ queue: asyncio.Queue[str] = asyncio.Queue()
 _server_message_cooldowns: Dict[int, Dict[int, float]] = {}
 _user_message_cooldowns: Dict[int, Dict[int, float]] = {}
 
-async def _dm_should_send_and_update(user_id: int, message_id: int, now: float):
-    """
-    Decide if we should DM this user for this specific message.
-    Returns (allow: bool, prev_ts: Optional[float], remaining_seconds: Optional[float]).
-    """
-    d = _user_message_cooldowns.get(user_id)
-    if d is None:
-        d = {}
-        _user_message_cooldowns[user_id] = d
-
-    prev = d.get(message_id)
-    if prev is None or (now - prev) >= COOLDOWN_SECONDS:
-        d[message_id] = now
-        return True, prev, None
-
-    return False, prev, COOLDOWN_SECONDS - (now - prev)
-
 # DM logic
 SUBS_FILE = Path(__file__).with_name("dm_subscribers.json")
 
@@ -127,27 +110,47 @@ async def ping_cmd(interaction: discord.Interaction):
 
 # --- helper to DM all subscribers when gold.py emits a message ---
 
-async def _dm_subscribers_broadcast(content: str):
-    # Avoid embeds in DMs if you prefer (suppress by wrapping with < > or just send plain)
+async def _dm_subscribers_broadcast(content: str, message_id: int):
     allowed_mentions = AllowedMentions.none()
-    # Copy into a list to avoid set size change during iteration
     targets = list(_dm_subscribers)
     if not targets:
         return
-    # fan out with gentle concurrency
+
+    now = time.time()
+
     async def _send_one(uid: int):
+        allow, _prev, remaining = await _dm_should_send_and_update(uid, message_id, now)
+        if not allow:
+            # Optional: log(f"[DM] Skipping user {uid}; ~{remaining/3600:.2f}h remaining for msg {message_id}")
+            return
         try:
             user = await client.fetch_user(uid)
-            # If they blocked DMs or we have no mutual context, this can fail
             await user.send(content, allowed_mentions=allowed_mentions)
         except Exception as e:
-            # If hard failure persists, optionally drop them
+            # If user can’t be DMed, optionally prune them
             if "Cannot send messages to this user" in str(e):
-                # Comment out next two lines if you don't want auto-prune
                 _dm_subscribers.discard(uid)
                 _save_subs(_dm_subscribers)
-    await asyncio.gather(*[asyncio.create_task(_send_one(uid)) for uid in targets], return_exceptions=True)
 
+    await asyncio.gather(*[asyncio.create_task(_send_one(uid)) for uid in targets],
+                         return_exceptions=True)
+
+async def _dm_should_send_and_update(user_id: int, message_id: int, now: float):
+    """
+    Decide if we should DM this user for this specific message.
+    Returns (allow: bool, prev_ts: Optional[float], remaining_seconds: Optional[float]).
+    """
+    d = _user_message_cooldowns.get(user_id)
+    if d is None:
+        d = {}
+        _user_message_cooldowns[user_id] = d
+
+    prev = d.get(message_id)
+    if prev is None or (now - prev) >= COOLDOWN_SECONDS:
+        d[message_id] = now
+        return True, prev, None
+
+    return False, prev, COOLDOWN_SECONDS - (now - prev)
 # ---------- Channel / Role helpers ----------
 
 async def _named_sendable_channel(guild: discord.Guild, name: str) -> Optional[discord.TextChannel]:
@@ -226,13 +229,10 @@ async def _dispatcher_loop():
     await client.wait_until_ready()
     while True:
         msg = await queue.get()
+        message_id = hash(msg)  # same id used for guild cooldowns
         try:
-            # existing per-guild send tasks...
-            guild_tasks = [asyncio.create_task(_send_to_guild(g, msg, hash(msg))) for g in client.guilds]
-
-            # NEW: also DM any subscribed users
-            dm_task = asyncio.create_task(_dm_subscribers_broadcast(msg))
-
+            guild_tasks = [asyncio.create_task(_send_to_guild(g, msg, message_id)) for g in client.guilds]
+            dm_task = asyncio.create_task(_dm_subscribers_broadcast(msg, message_id))  # <-- pass id here
             await asyncio.gather(*(guild_tasks + [dm_task]), return_exceptions=True)
         finally:
             queue.task_done()
