@@ -47,6 +47,24 @@ queue: asyncio.Queue[str] = asyncio.Queue()
 
 # Per-server and per-message cooldown state
 _server_message_cooldowns: Dict[int, Dict[int, float]] = {}
+_user_message_cooldowns: Dict[int, Dict[int, float]] = {}
+
+async def _dm_should_send_and_update(user_id: int, message_id: int, now: float):
+    """
+    Decide if we should DM this user for this specific message.
+    Returns (allow: bool, prev_ts: Optional[float], remaining_seconds: Optional[float]).
+    """
+    d = _user_message_cooldowns.get(user_id)
+    if d is None:
+        d = {}
+        _user_message_cooldowns[user_id] = d
+
+    prev = d.get(message_id)
+    if prev is None or (now - prev) >= COOLDOWN_SECONDS:
+        d[message_id] = now
+        return True, prev, None
+
+    return False, prev, COOLDOWN_SECONDS - (now - prev)
 
 # DM logic
 SUBS_FILE = Path(__file__).with_name("dm_subscribers.json")
