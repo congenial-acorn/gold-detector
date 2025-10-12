@@ -1,3 +1,9 @@
+## [1.2.0] - 2025-10-12
+### Added
+- Added new slash commands to set a custom alert channel and role.
+- If these are not set it will still default to #market-watch and @Market Alert.
+
+
 ## [1.1.1] - 2025-10-11
 ### Fix
 - Reduced number of pings per message group.
