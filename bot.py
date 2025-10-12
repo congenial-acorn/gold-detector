@@ -4,13 +4,18 @@ import asyncio
 import threading
 from typing import Optional, Dict
 from pathlib import Path
-
 import discord
 from discord import app_commands, AllowedMentions
 from dotenv import load_dotenv, find_dotenv
-
 import gold  # gold.py must be importable (same folder or on PYTHONPATH)
 import json
+from hashlib import blake2b
+
+def message_key(s: str) -> int:
+    # 8-byte digest -> 64-bit int; tiny chance of collision, stable across restarts
+    h = blake2b(s.encode("utf-8"), digest_size=8)
+    return int.from_bytes(h.digest(), "big")
+
 # Load .env (CWD first, then next to this file)
 _ = load_dotenv(find_dotenv())
 if not os.getenv("DISCORD_TOKEN"):
@@ -89,6 +94,9 @@ def _load_nested_cooldowns(path: Path) -> Dict[int, Dict[int, float]]:
         return {int(g): {int(mid): float(ts) for mid, ts in inner.items()} for g, inner in raw.items()}
     except Exception:
         return {}
+
+
+
 _server_message_cooldowns: Dict[int, Dict[int, float]] = _load_nested_cooldowns(SERVER_CD_FILE)
 _user_message_cooldowns: Dict[int, Dict[int, float]] = _load_nested_cooldowns(USER_CD_FILE)
 
@@ -353,7 +361,7 @@ async def _dispatcher_loop():
     await client.wait_until_ready()
     while True:
         msg = await queue.get()
-        message_id = hash(msg)  # same id used for guild cooldowns
+        message_id = message_key(msg)  # same id used for guild cooldowns
         try:
             guild_tasks = [asyncio.create_task(_send_to_guild(g, msg, message_id)) for g in client.guilds]
             dm_task = asyncio.create_task(_dm_subscribers_broadcast(msg, message_id))  # <-- pass id here
@@ -365,6 +373,9 @@ async def _dispatcher_loop():
 async def on_ready():
     log(f"✅ Logged in as {client.user} (id={client.user.id})")
     log(f"Posting only to channels named: #{ALERT_CHANNEL_NAME}")
+
+
+
     if ROLE_NAME:
         log(f"Ping role on cycle complete: @{ROLE_NAME}")
     log(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
@@ -382,6 +393,19 @@ async def on_ready():
     if hasattr(gold, "set_loop_done_emitter"):
         gold.set_loop_done_emitter(lambda: client.loop.call_soon_threadsafe(ping_queue.put_nowait, True))
         log("Loop-done emitter registered via gold.set_loop_done_emitter(...)")
+    async def _cooldown_snapshot_loop():
+        while True:
+            _prune_cooldown_map(_server_message_cooldowns, COOLDOWN_SECONDS)
+            _prune_cooldown_map(_user_message_cooldowns, COOLDOWN_SECONDS)
+            _save_nested_cooldowns(SERVER_CD_FILE, _server_message_cooldowns)
+            _save_nested_cooldowns(USER_CD_FILE, _user_message_cooldowns)
+            await asyncio.sleep(60)
+    try:
+        # make slash commands available globally (works in DMs if dm_permission=True)
+        await tree.sync()
+        log("Slash commands synced.")
+    except Exception as e:
+        log(f"Slash command sync failed: {e}")
 
     # Start gold.py forever (your existing code with backoff)
     def run_gold_forever():
@@ -411,8 +435,10 @@ async def on_ready():
     log("Started gold.py in background thread.")
 
     # Start dispatchers
+    asyncio.create_task(_cooldown_snapshot_loop())
     asyncio.create_task(_dispatcher_loop())       # existing message dispatcher
     asyncio.create_task(_ping_dispatcher_loop())  # NEW ping dispatcher
 
 if __name__ == "__main__":
     client.run(TOKEN)
+
