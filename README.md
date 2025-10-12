@@ -1,5 +1,6 @@
 ## STATUS
-The bot has been fixed. Last updated: 10/11, 2:19 AM UTC
+The bot has been fixed. Last updated: 10/11, 2:19 AM UTC.
+
 Read the changelog [here](https://github.com/congenial-acorn/gold-detector/blob/main/CHANGELOG.md)
 # Gold Detector Discord Bot
 Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151
