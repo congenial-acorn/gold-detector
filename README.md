@@ -17,14 +17,14 @@ This bot will detect the stations that are in infrastructure failure, but withou
 Note: You may read about other effects of BGS on markets here https://cdb.sotl.org.uk/effects
 
 ## Bot Setup (users)
-Invite the bot using Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select "Install to user".
-Opt into messages using /alerts_on. To turn alerts off, use /alerts_off
+Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select "Add to my apps".
+IMPORTANT! Opt into messages using `/alerts_on`. To turn alerts off, use `/alerts_off`.
 
 ## Bot Setup (servers)
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select a server.
 IMPORTANT! Give the bot permission to see a channel named exactly "market-watch". Otherwise, you will not receive messages.
 Optionally create a role named exactly "Market Alert" to get pinged.
-Alerts are sent by default. To disable alerts, use /server_alerts_off. To enable, use /server_alerts_on.
+Alerts are sent by default. To disable alerts, use `/server_alerts_off`. To enable, use `/server_alerts_on`
 
 ## Usage
 After setting up the bot, simply wait for pings. Successful gold detections will occur sometimes a few times a week, sometimes once a month. Alerts have a cooldown of 48 hours. Sometimes, some fields of the message will be "unknown". These stations are still worth visiting because sometimes Inara does not get full market data due to colonization.
