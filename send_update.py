@@ -21,6 +21,7 @@ if DEBUG_MODE_DMS:
 DM_SUBS_FILE = Path(__file__).with_name("dm_subscribers.json")
 # If you use guild opt-out/opt-in files, you can also reference them here as needed.
 
+
 def load_dm_subs() -> list[int]:
     try:
         with open(DM_SUBS_FILE, "r") as f:
@@ -28,7 +29,9 @@ def load_dm_subs() -> list[int]:
     except Exception:
         return []
 
+
 # ---- sending helpers ---------------------------------------------------------
+
 
 async def send_update_to_dms(client: discord.Client, message: str):
     subs = load_dm_subs()
@@ -45,7 +48,10 @@ async def send_update_to_dms(client: discord.Client, message: str):
         except Exception as e:
             print(f"DM failed -> {uid}: {e}")
 
-async def send_update_to_servers(client: discord.Client, message: str, channel_name: str):
+
+async def send_update_to_servers(
+    client: discord.Client, message: str, channel_name: str
+):
     if not channel_name:
         print("ALERT_CHANNEL_NAME is empty; set it in .env to broadcast to servers.")
         return
@@ -62,11 +68,17 @@ async def send_update_to_servers(client: discord.Client, message: str, channel_n
             if not target:
                 print(f"[{guild.name}] no sendable #{channel_name}")
                 continue
-            await target.send(message, allowed_mentions=discord.AllowedMentions(roles=False, users=False, everyone=False))
+            await target.send(
+                message,
+                allowed_mentions=discord.AllowedMentions(
+                    roles=False, users=False, everyone=False
+                ),
+            )
             print(f"[{guild.name}] sent -> #{target.name}")
             await asyncio.sleep(0.5)
         except Exception as e:
             print(f"[{guild.name}] send failed: {e}")
+
 
 # ---- main client -------------------------------------------------------------
 
@@ -75,12 +87,13 @@ intents = discord.Intents.none()
 intents.guilds = True  # we iterate guilds to send to channels
 client = discord.Client(intents=intents)
 
+
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user} (ID: {client.user.id})")
     # Parse args when the client is ready
     if len(sys.argv) < 3:
-        print("Usage: python send_update.py \"message\" dms|servers")
+        print('Usage: python send_update.py "message" dms|servers')
         await client.close()
         return
 
@@ -96,6 +109,7 @@ async def on_ready():
             print("Invalid target. Use 'dms' or 'servers'.")
     finally:
         await client.close()
+
 
 if __name__ == "__main__":
     if not TOKEN:
