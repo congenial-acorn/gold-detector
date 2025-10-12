@@ -11,6 +11,12 @@ from dotenv import load_dotenv
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 ALERT_CHANNEL_NAME = os.getenv("ALERT_CHANNEL_NAME", "").strip()
+DEBUG_MODE = os.getenv("DEBUG_MODE", "").strip()
+DEBUG_MODE_DMS = os.getenv("DEBUG_MODE_DMS", "").strip()
+if DEBUG_MODE:
+    DEBUG_SERVER_ID = int(os.getenv("DEBUG_SERVER_ID", "0"))
+if DEBUG_MODE_DMS:
+    DEBUG_USER_ID = int(os.getenv("DEBUG_USER_ID", "0"))
 
 DM_SUBS_FILE = Path(__file__).with_name("dm_subscribers.json")
 # If you use guild opt-out/opt-in files, you can also reference them here as needed.
