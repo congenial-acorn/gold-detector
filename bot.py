@@ -6,10 +6,11 @@ from typing import Optional, Dict
 from pathlib import Path
 
 import discord
+from discord import app_commands, AllowedMentions
 from dotenv import load_dotenv, find_dotenv
 
 import gold  # gold.py must be importable (same folder or on PYTHONPATH)
-
+import json
 # Load .env (CWD first, then next to this file)
 _ = load_dotenv(find_dotenv())
 if not os.getenv("DISCORD_TOKEN"):
@@ -22,7 +23,8 @@ BOT_VERBOSE = os.getenv("BOT_VERBOSE", "1") == "1"
 
 # DEBUG_MODE setup to limit the bot to a specific server
 DEBUG_MODE = os.getenv("DEBUG_MODE", "False") == "True"  # Enable/disable debug mode
-DEBUG_SERVER_ID = int(os.getenv("DEBUG_SERVER_ID", "0"))  # Specify server ID for debug mode
+if DEBUG_MODE:
+    DEBUG_SERVER_ID = int(os.getenv("DEBUG_SERVER_ID", "0"))  # Specify server ID for debug mode
 
 BURST_MINUTES = float(os.getenv("BURST_MINUTES", 8.0))
 COOLDOWN_HOURS = float(os.getenv("COOLDOWN_HOURS", 48.0))
@@ -46,12 +48,7 @@ client = discord.Client(intents=intents)
 queue: asyncio.Queue[str] = asyncio.Queue()
 
 # Per-server and per-message cooldown state
-_server_message_cooldowns: Dict[int, Dict[int, float]] = _load_nested_cooldowns(SERVER_CD_FILE)
-_user_message_cooldowns: Dict[int, Dict[int, float]] = _load_nested_cooldowns(USER_CD_FILE)
 
-# prune anything older than the active cooldown window
-_prune_cooldown_map(_server_message_cooldowns, COOLDOWN_SECONDS)
-_prune_cooldown_map(_user_message_cooldowns, COOLDOWN_SECONDS)
 
 # --- Cooldown persistence (server+DM) ---
 SERVER_CD_FILE = Path(__file__).with_name("server_cooldowns.json")
@@ -90,7 +87,12 @@ def _load_nested_cooldowns(path: Path) -> Dict[int, Dict[int, float]]:
         return {int(g): {int(mid): float(ts) for mid, ts in inner.items()} for g, inner in raw.items()}
     except Exception:
         return {}
+_server_message_cooldowns: Dict[int, Dict[int, float]] = _load_nested_cooldowns(SERVER_CD_FILE)
+_user_message_cooldowns: Dict[int, Dict[int, float]] = _load_nested_cooldowns(USER_CD_FILE)
 
+# prune anything older than the active cooldown window
+_prune_cooldown_map(_server_message_cooldowns, COOLDOWN_SECONDS)
+_prune_cooldown_map(_user_message_cooldowns, COOLDOWN_SECONDS)
 
 # DM logic
 SUBS_FILE = Path(__file__).with_name("dm_subscribers.json")
