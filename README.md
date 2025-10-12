@@ -1,7 +1,7 @@
 ## STATUS
 The bot has been fixed. Last updated: 10/11, 2:19 AM UTC.
 
-Read the changelog [here](https://github.com/congenial-acorn/gold-detector/blob/main/CHANGELOG.md)
+Read the changelog [here](https://github.com/congenial-acorn/gold-detector/blob/main/CHANGELOG.md).
 # Gold Detector Discord Bot
 Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151
 
@@ -34,6 +34,12 @@ After setting up the bot, simply wait for pings. Successful gold detections will
 Once you get a message, just go to the station in your hauling ship (and your carrier if you have one) and then start buying the gold. You can use Inara commodity search to find good gold sell prices nearby. Or you can load your carrier to the top and then find good sell prices later. You can make hundreds of millions of credits by doing this, and this is definitely the best trading you can find outside of much rarer special conditions. 
 
 Note: when you get to the station, you will see the stock is much lower than the bot reported. The stock will actually refill over time until all of the stock it originally had is gone so do not worry.
+
+## Commands
+`/alerts_on`: DM-only command to enable alerts
+`/alerts_off`: DM-only command to disable alerts
+`/server_alerts_off`: Server-only command to disable alerts. 
+`/server_alerts_on`: Server-only command to enable alerts. Note: Alerts are sent by default.
 
 ### Legal
 The source code is released under CC0. Neither the bot nor the developer is associated with Frontier Developments, Elite Dangerous, Inara.cz, or any other member or tool of the Elite Dangerous community.
