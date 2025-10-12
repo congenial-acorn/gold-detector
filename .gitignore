@@ -1,6 +1,6 @@
 # Secrets / env files
 .env
-.env.*
+.env
 !.env.example        # keep a template in the repo
 .envrc
 # storage files
@@ -8,6 +8,7 @@ dm_subscribers.json
 guild_optout.json
 server_cooldowns.json
 user_cooldowns.json
+guild_prefs.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
