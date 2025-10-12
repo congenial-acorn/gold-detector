@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 # ---- EMITTER WIRING ---------------------------------------------------------
 
 _emit = None  # set by the bot at runtime
+_emit_loop_done = None
 
 def set_emitter(func):
     """Bot calls this to register a simple, thread-safe 'emit(message: str)' function."""
@@ -23,6 +24,11 @@ def send_to_discord(message: str):
         _emit(message)
     else:
         print(f"[Discord] (noop) {message}")  # falls back to stdout if bot not wired
+
+def set_loop_done_emitter(func):  # <-- ADD THIS
+    """Bot registers a callback we call once per cycle if any alerts were sent."""
+    global _emit_loop_done
+    _emit_loop_done = func
 
 
 # ---- GLOBAL HTTP THROTTLE + BACKOFF -----------------------------------------
@@ -193,6 +199,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
             station_id, metal = key.split("-", 1)
             if station_id not in alive_ids:
                 del last_ping[key]
+        sent_message = False
         for url in market_urls:
             resp = http_get(url)
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -228,11 +235,19 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                             f"{metal} stock: {stock}"
                         )
                         send_to_discord(msg)
+                        sent_message = True
                         last_ping[key] = now
                         print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
+        if sent_message and _emit_loop_done:
+            if _emit_loop_done:
+                try:
+                    _emit_loop_done()
+                except Exception as e:
+                    print(f"[gold] loop_done emit failed: {e}")
 
         # wait before checking again
+        print("Loop finished. Sleeping for 30 minutes.")
         time.sleep(30 * 60)  # 30 minutes
 
 

@@ -1,3 +1,7 @@
+## [1.1.1] - 2025-10-11
+### Fix
+- Reduced number of pings per message group.
+
 ## [1.1.0] - 2025-10-11
 ### Added
 - Added user installation. The Discord bot can now send direct messages (DMs) to users.
