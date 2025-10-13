@@ -36,10 +36,30 @@ Once you get a message, just go to the station in your hauling ship (and your ca
 Note: when you get to the station, you will see the stock is much lower than the bot reported. The stock will actually refill over time until all of the stock it originally had is gone so do not worry.
 
 ## Commands
-`/alerts_on`: DM-only command to enable alerts
-`/alerts_off`: DM-only command to disable alerts
-`/server_alerts_off`: Server-only command to disable alerts. 
-`/server_alerts_on`: Server-only command to enable alerts. Note: Alerts are sent by default.
+`/alerts_on`: Command to subscribe to DM alerts.
+
+`/alerts_off`: Command to unsubscribe from DM alerts.
+
+`ping`: Check if bot is alive.
+
+`help`: Get a link to this page.
+
+The following commands require Manage Guild permission.
+
+`/server_alerts_off`: Server command to disable alerts.
+
+`/server_alerts_on`: Server command to enable alerts. Note: Alerts are sent by default.
+
+`/set_alert_channel`: Server command to set a custom channel. If not set, defaults to #market-watch.
+
+`/clear_alert_channel`: Server command to revert to default channel (#market-watch).
+
+`/set_alert_role`: Server command to set a custom role to ping. If not set, defaults to @Market Alert.
+
+`/clear_alert_role`: Server command to revert to pinging the default role (@Market Alert).
+
+`/show_alert_settings`: See the server's configuration.
+
 
 ### Legal
 The source code is released under CC0. Neither the bot nor the developer is associated with Frontier Developments, Elite Dangerous, Inara.cz, or any other member or tool of the Elite Dangerous community.
