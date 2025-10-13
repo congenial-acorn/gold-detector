@@ -47,6 +47,8 @@ if DEBUG_MODE_DMS:
 COOLDOWN_HOURS = float(os.getenv("COOLDOWN_HOURS", 48.0))
 COOLDOWN_SECONDS = int(COOLDOWN_HOURS * 3600)
 
+HELP_URL = "https://github.com/congenial-acorn/gold-detector/tree/main?tab=readme-ov-file#commands"
+
 _sent_since_last_loop = False
 
 
@@ -451,7 +453,12 @@ async def show_alert_settings(interaction: discord.Interaction):
         f"**Alert channel:** {where} ({ch_src})\n**Ping role:** {who} ({role_src})",
         ephemeral=True,
     )
-
+@tree.command(name="help", description="Show help & commands for this bot")
+async def help_cmd(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        f"Gold Detector commands & docs: <{HELP_URL}>",
+        ephemeral=True  # set to False if you want it public
+        )
 
 @tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: Exception):
@@ -470,6 +477,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
         pass
     # fall back to default behaviour
     raise error
+
 
 
 # --- helper to DM all subscribers when gold.py emits a message ---
