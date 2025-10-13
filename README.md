@@ -20,12 +20,15 @@ Note: You may read about other effects of BGS on markets here https://cdb.sotl.o
 
 ## Bot Setup (users)
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select "Add to my apps".
+
 IMPORTANT! Opt into messages using `/alerts_on`. To turn alerts off, use `/alerts_off`.
 
 ## Bot Setup (servers)
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select a server.
-IMPORTANT! Give the bot permission to see a channel named exactly "market-watch". Otherwise, you will not receive messages.
-Optionally create a role named exactly "Market Alert" to get pinged.
+Set a channel using `/set_alert_channel`. If you wish, create a role and set it using `/set_alert_role` to get pings.
+
+If you don't do this, the bot will send to `#market-watch` and ping `@Market Alert` by default.
+
 Alerts are sent by default. To disable alerts, use `/server_alerts_off`. To enable, use `/server_alerts_on`
 
 ## Usage
@@ -40,9 +43,9 @@ Note: when you get to the station, you will see the stock is much lower than the
 
 `/alerts_off`: Command to unsubscribe from DM alerts.
 
-`ping`: Check if bot is alive.
+`/ping`: Check if bot is alive.
 
-`help`: Get a link to this page.
+`/help`: Get a link to this page.
 
 The following commands require Manage Guild permission.
 
