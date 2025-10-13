@@ -453,6 +453,7 @@ async def show_alert_settings(interaction: discord.Interaction):
         f"**Alert channel:** {where} ({ch_src})\n**Ping role:** {who} ({role_src})",
         ephemeral=True,
     )
+
 @tree.command(name="help", description="Show help & commands for this bot")
 async def help_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(
@@ -721,7 +722,14 @@ async def _dispatcher_loop():
 
 @client.event
 async def on_ready():
-
+    await client.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.watching,
+            name="for /help"
+        ),
+        status=discord.Status.online  # or .idle / .dnd / .invisible
+    )
+    print(f"Logged in as {client.user}")
     log(f"Default channel: #{ALERT_CHANNEL_NAME or DEFAULT_ALERT_CHANNEL_NAME}")
     log(f"Default ping role: @{ROLE_NAME or DEFAULT_ROLE_NAME}")
 
