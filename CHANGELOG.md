@@ -1,9 +1,12 @@
+## [1.2.1] - 2025-10-18
+### Fix
+- Fixed issue causing role pings to be sent even when no messages were recieved from the bot.
+
 ## [1.2.0] - 2025-10-12
 ### Added
 - Added new slash commands to set a custom alert channel and role.
 - If these are not set it will still default to #market-watch and @Market Alert.
 - Added `/help`.
-
 
 ## [1.1.1] - 2025-10-11
 ### Fix
