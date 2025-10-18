@@ -240,7 +240,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                 buy_price = int(cells[3]["data-order"])
                 stock = int(cells[4]["data-order"])
                 print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
-                if buy_price > 28_000 and stock > 10_000:
+                if buy_price > 28_000 and stock > 15_000:
                     station_id = re.search(r"/(\d+)/$", url).group(1)
                     st_type = get_station_type(station_id)
                     key = f"{station_id}-{metal}"
