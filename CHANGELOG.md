@@ -1,6 +1,6 @@
 ## [1.2.1] - 2025-10-18
 ### Fix
-- Fixed issue causing role pings to be sent even when no messages were recieved from the bot.
+- Fixed issue causing role pings to be sent even when no messages were received from the bot.
 
 ## [1.2.0] - 2025-10-12
 ### Added
