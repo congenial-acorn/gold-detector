@@ -49,8 +49,6 @@ COOLDOWN_SECONDS = int(COOLDOWN_HOURS * 3600)
 
 HELP_URL = "https://github.com/congenial-acorn/gold-detector/tree/main?tab=readme-ov-file#commands"
 
-_sent_since_last_loop = False
-
 
 def log(*a):
     if BOT_VERBOSE:
@@ -145,7 +143,8 @@ intents.guilds = True
 client = discord.Client(intents=intents)
 
 queue: asyncio.Queue[str] = asyncio.Queue()
-ping_queue: asyncio.Queue[bool] = asyncio.Queue()
+_sent_since_last_loop_by_guild: set[int] = set()
+ping_queue: asyncio.Queue[int] = asyncio.Queue()
 
 # Per-server and per-message cooldown state
 
@@ -454,12 +453,14 @@ async def show_alert_settings(interaction: discord.Interaction):
         ephemeral=True,
     )
 
+
 @tree.command(name="help", description="Show help & commands for this bot")
 async def help_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"Gold Detector commands & docs: <{HELP_URL}>",
-        ephemeral=True  # set to False if you want it public
-        )
+        ephemeral=True,  # set to False if you want it public
+    )
+
 
 @tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: Exception):
@@ -478,7 +479,6 @@ async def on_app_command_error(interaction: discord.Interaction, error: Exceptio
         pass
     # fall back to default behaviour
     raise error
-
 
 
 # --- helper to DM all subscribers when gold.py emits a message ---
@@ -603,93 +603,76 @@ async def _should_send_and_update(guild_id: int, message_id: int, now: float):
 # ---------- Sending ----------
 
 
-async def _send_to_guild(guild: discord.Guild, content: str, message_id: int):
+async def _send_to_guild(guild: discord.Guild, content: str, message_id: int) -> bool:
     if guild.id in _guild_optout:
         return False
 
     now = time.time()
     guild_id = guild.id
 
+    # Debug server gate
     if DEBUG_MODE and guild_id != DEBUG_SERVER_ID:
         log(
             f"[DEBUG MODE] Skipping message to server {guild_id}, only sending to {DEBUG_SERVER_ID}."
         )
         return False
 
+    # Per-guild, per-message cooldown
     allow, prev_timestamp, remaining = await _should_send_and_update(
         guild_id, message_id, now
     )
     if not allow:
-        hrs = remaining / 3600 if remaining else 0.0
+        hrs = (remaining or 0) / 3600
         log(
-            f"[{guild.name}] Cooldown active for message {message_id} in this server; skipping. ~{hrs:.2f}h remaining."
+            f"[{guild.name}] Cooldown active for msg {message_id}; skipping (~{hrs:.2f}h)."
         )
         return False
 
+    # Resolve channel with perms
     ch = _resolve_sendable_channel(guild)
     if not ch:
-        log(
-            f"[{guild.name}] No sendable channel resolved (id={_get_effective_channel_id(guild.id)}, name='#{_get_effective_channel_name(guild.id)}'). Skipping."
-        )
+        log(f"[{guild.name}] No sendable channel resolved; skipping.")
         return False
 
-    allowed_mentions = discord.AllowedMentions(roles=False, users=False, everyone=False)
-
     try:
-        await ch.send(f"{content}", allowed_mentions=allowed_mentions)
+        await ch.send(content, allowed_mentions=discord.AllowedMentions.none())
         if prev_timestamp is None:
             log(f"[{guild.name}] Sent to #{ch.name}.")
         else:
-            log(
-                f"[{guild.name}] Sent to #{ch.name}. (Cooldown applied for message {message_id})"
-            )
+            log(f"[{guild.name}] Sent to #{ch.name}. (Cooldown keyed)")
         return True
     except Exception as e:
-        log(f"[{guild.name}] ERROR sending message: {e}")
+        log(f"[{guild.name}] ERROR sending: {e}")
         return False
 
 
 # ---------- Dispatcher & Lifecycle ----------
 
 
-async def _send_ping_to_guild(guild: discord.Guild):
-    ch = _resolve_sendable_channel(guild)
-    if not ch:
-        log(
-            f"[{guild.name}] No sendable channel resolved (id={_get_effective_channel_id(guild.id)}, name='#{_get_effective_channel_name(guild.id)}') for ping."
-        )
-        return
-
-    role = _find_role_by_name(guild)
-    if not role:
-        # If there’s no role configured/found, send a plain “cycle complete” note without ping
-        try:
-            await ch.send("Scan complete. New results above.")
-        except Exception as e:
-            log(f"[{guild.name}] ERROR sending ping fallback: {e}")
-        return
-
-    # Ping the role once per cycle
-    try:
-        await ch.send(
-            f"{role.mention} Scan complete. New results above.",
-            allowed_mentions=discord.AllowedMentions(
-                roles=True, users=False, everyone=False
-            ),
-        )
-        log(f"[{guild.name}] Sent cycle-complete ping to #{ch.name}")
-    except Exception as e:
-        log(f"[{guild.name}] ERROR sending ping: {e}")
-
-
-async def _ping_dispatcher_loop():
-    await client.wait_until_ready()
+async def _ping_loop():
     while True:
-        _ = await ping_queue.get()  # value is unused; presence is the signal
+        gid = await ping_queue.get()  # one guild ID per item
         try:
-            tasks = [asyncio.create_task(_send_ping_to_guild(g)) for g in client.guilds]
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+            g = client.get_guild(gid)
+            if not g:
+                continue
+            ch = _resolve_sendable_channel(g)
+            if not ch:
+                continue
+            role = _find_role_by_name(g)
+            if role:
+                await ch.send(
+                    f"{role.mention}",
+                    allowed_mentions=discord.AllowedMentions(
+                        roles=True, users=False, everyone=False
+                    ),
+                )
+                log(f"[{g}] Ping sent")
+            else:
+                await ch.send(
+                    "Scan complete. New results above.",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
         finally:
             ping_queue.task_done()
 
@@ -698,36 +681,50 @@ async def _dispatcher_loop():
     await client.wait_until_ready()
     while True:
         msg = await queue.get()
-        message_id = message_key(msg)  # same id used for guild cooldowns
+        message_id = message_key(msg)
         try:
+            guilds = list(client.guilds)
             guild_tasks = [
-                asyncio.create_task(_send_to_guild(g, msg, message_id))
-                for g in client.guilds
+                asyncio.create_task(_send_to_guild(g, msg, message_id)) for g in guilds
             ]
-            dm_task = asyncio.create_task(
-                _dm_subscribers_broadcast(msg, message_id)
-            )  # <-- pass id here
+            dm_task = asyncio.create_task(_dm_subscribers_broadcast(msg, message_id))
+
             results = await asyncio.gather(
                 *(guild_tasks + [dm_task]), return_exceptions=True
             )
-            sent_any = any(
-                (r is True) for r in results[:-1] if not isinstance(r, Exception)
-            )
-            if sent_any:
-                global _sent_since_last_loop
-                _sent_since_last_loop = True
+
+            # results[:-1] correspond 1:1 to guilds
+            sent_guild_ids = {
+                g.id
+                for g, r in zip(guilds, results[:-1])
+                if (r is True) and not isinstance(r, Exception)
+            }
+            if sent_guild_ids:
+                _sent_since_last_loop_by_guild.update(sent_guild_ids)
         finally:
             queue.task_done()
+
+
+def _loop_done_handler():
+    # Called by gold.py at the end of its cycle.
+    # Drain the set of guilds that actually sent, and enqueue a ping for each.
+    def _drain_and_emit():
+        to_ping = list(_sent_since_last_loop_by_guild)
+        _sent_since_last_loop_by_guild.clear()
+        for gid in to_ping:
+            ping_queue.put_nowait(gid)
+        if not to_ping:
+            log("Loop done: no guild deliveries this cycle; suppressing all pings.")
+
+    # Run on the bot's loop thread
+    client.loop.call_soon_threadsafe(_drain_and_emit)
 
 
 @client.event
 async def on_ready():
     await client.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.watching,
-            name="for /help"
-        ),
-        status=discord.Status.online  # or .idle / .dnd / .invisible
+        activity=discord.Activity(type=discord.ActivityType.watching, name="for /help"),
+        status=discord.Status.online,  # or .idle / .dnd / .invisible
     )
     print(f"Logged in as {client.user}")
     log(f"Default channel: #{ALERT_CHANNEL_NAME or DEFAULT_ALERT_CHANNEL_NAME}")
@@ -743,6 +740,11 @@ async def on_ready():
             lambda m: client.loop.call_soon_threadsafe(queue.put_nowait, m)
         )
         log("Emitter registered via gold.set_emitter(...)")
+
+    client.loop.create_task(_ping_loop())
+    if hasattr(gold, "set_loop_done_emitter"):
+        gold.set_loop_done_emitter(_loop_done_handler)
+        log("Loop-done emitter registered via gold.set_loop_done_emitter(...)")
     else:
         # fallback monkey-patch if needed
         if hasattr(gold, "send_to_discord") and callable(
@@ -754,20 +756,6 @@ async def on_ready():
                 lambda m: client.loop.call_soon_threadsafe(queue.put_nowait, m),
             )
             log("Emitter installed by monkey-patching gold.send_to_discord(...)")
-
-    def _loop_done_handler():
-        # Called by gold.py at the end of its cycle
-        global _sent_since_last_loop
-        if _sent_since_last_loop:
-            _sent_since_last_loop = False
-            # only now do we surface the ping into the bot's ping loop
-            client.loop.call_soon_threadsafe(ping_queue.put_nowait, True)
-        else:
-            log("Loop done: no guild deliveries in this cycle; suppressing ping.")
-
-    if hasattr(gold, "set_loop_done_emitter"):
-        gold.set_loop_done_emitter(_loop_done_handler)
-        log("Loop-done emitter registered via gold.set_loop_done_emitter(...)")
 
     async def _cooldown_snapshot_loop():
         while True:
@@ -816,7 +804,6 @@ async def on_ready():
     # Start dispatchers
     asyncio.create_task(_cooldown_snapshot_loop())
     asyncio.create_task(_dispatcher_loop())  # existing message dispatcher
-    asyncio.create_task(_ping_dispatcher_loop())  # NEW ping dispatcher
 
 
 if __name__ == "__main__":

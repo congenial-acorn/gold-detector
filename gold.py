@@ -6,7 +6,6 @@ import os
 import threading
 import requests
 import functools
-from bs4 import BeautifulSoup
 from typing import Optional, cast
 from bs4 import BeautifulSoup, Tag, NavigableString, PageElement
 
@@ -109,13 +108,17 @@ def get_station_market_urls(near_urls):
     market_urls = []
     pattern = re.compile(r"^/elite/station/(\d+)/$")
     for url in near_urls:
-        resp = http_get(url)
-        soup: BeautifulSoup = BeautifulSoup(resp.text, "html.parser")
-        for a in soup.find_all("a", href=True):
-            m = pattern.match(a["href"])
-            if m:
-                sid = m.group(1)
-                market_urls.append(f"https://inara.cz/elite/station-market/{sid}/")
+        try:
+            resp = http_get(url)
+            soup: BeautifulSoup = BeautifulSoup(resp.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                m = pattern.match(a["href"])
+                if m:
+                    sid = m.group(1)
+                    market_urls.append(f"https://inara.cz/elite/station-market/{sid}/")
+        except Exception as e:
+            print(f"[gold] failed {url}: {e}")
+            continue
     # preserve order, drop dupes
     return list(dict.fromkeys(market_urls))
 
@@ -173,33 +176,28 @@ def get_station_type(station_id: str) -> str:
         return f"{base} ({suffix})" if suffix else base
 
     # --- Surface-station case: try one more <div> after ---
-        div_anchor: Optional[Tag] = parent if parent.name == "div" else parent.find_parent("div")
-        next_div: Optional[Tag] = div_anchor.find_next_sibling("div") if div_anchor else None
-        if next_div is not None:
-            ctx2 = next_div.get_text(" ", strip=True)
-        # Best case: the next div repeats the base type with parentheses
-        m2 = _TYPE_WITH_PARENS.search(ctx2)
-        if m2:
-            base = _canon_base(m2.group(1))
-            suffix = m2.group(2)
-            return f"{base} ({suffix})" if suffix else base
+    div_anchor: Optional[Tag] = (
+        parent if parent.name == "div" else parent.find_parent("div")
+    )
+    next_div: Optional[Tag] = (
+        div_anchor.find_next_sibling("div") if div_anchor else None
+    )
+    ctx2 = next_div.get_text(" ", strip=True) if next_div is not None else ""
 
-        # Otherwise, we already know the base type from the anchor; just harvest parentheses
-        paren = re.search(r"\(([^)]+)\)", ctx2)
-        m_base = _TYPE_ANCHOR.search(str(node))
-        if not m_base:
-            return "Unknown"
-        base = _canon_base(m_base.group(1))
-        if paren:
-            return f"{base} ({paren.group(1)})"
-        return base
+    # Best case: the next div repeats the base type with parentheses
+    m2 = _TYPE_WITH_PARENS.search(ctx2)
+    if m2:
+        base = _canon_base(m2.group(1))
+        suffix = m2.group(2)
+        return f"{base} ({suffix})" if suffix else base
 
-    # Fallback: return just the base type we anchored on
-    m_base2 = _TYPE_ANCHOR.search(str(node))
-    if not m_base2:
+    # Otherwise, we already know the base type from the anchor; just harvest parentheses
+    paren = re.search(r"\(([^)]+)\)", ctx2)
+    m_base = _TYPE_ANCHOR.search(str(node))
+    if not m_base:
         return "Unknown"
-    base = _canon_base(m_base2.group(1))
-    return base
+    base = _canon_base(m_base.group(1))
+    return f"{base} ({paren.group(1)})" if paren else base
 
 
 # ---- MAIN LOOP --------------------------------------------------------------
@@ -219,7 +217,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
             station_id, metal = key.split("-", 1)
             if station_id not in alive_ids:
                 del last_ping[key]
-        sent_message = False
+
         for url in market_urls:
             resp = http_get(url)
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -242,7 +240,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                 buy_price = int(cells[3]["data-order"])
                 stock = int(cells[4]["data-order"])
                 print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
-                if buy_price > 28_000 and stock > 19_000:
+                if buy_price > 28_000 and stock > 10_000:
                     station_id = re.search(r"/(\d+)/$", url).group(1)
                     st_type = get_station_type(station_id)
                     key = f"{station_id}-{metal}"
@@ -257,22 +255,22 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                             f"{metal} stock: {stock}"
                         )
                         send_to_discord(msg)
-                        sent_message = True
                         last_ping[key] = now
                         print(
                             f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}"
                         )
                         print(f"    ↪ alert sent, cooldown until {now + cooldown}")
-        if sent_message and _emit_loop_done:
-            if _emit_loop_done:
-                try:
-                    _emit_loop_done()
-                except Exception as e:
-                    print(f"[gold] loop_done emit failed: {e}")
+
+        if _emit_loop_done:
+            try:
+                _emit_loop_done()
+            except Exception as e:
+                print(f"[gold] loop_done emit failed: {e}")
 
         # wait before checking again
         print("Loop finished. Sleeping for 30 minutes.")
-        time.sleep(30 * 60)  # 30 minutes
+        #time.sleep(30 * 60)  # 30 minutes
+        time.sleep(15)
 
 
 def main():
