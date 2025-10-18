@@ -1,5 +1,5 @@
 ## STATUS
-Version 1.2.0 has been deployed. Last updated: 10/12, 12:14 AM UTC.
+Version 1.2.1 has been deployed. Last updated: 10/18, 9:47 PM UTC.
 
 Read the changelog [here](https://github.com/congenial-acorn/gold-detector/blob/main/CHANGELOG.md). Scroll down for a description of this bot.
 
