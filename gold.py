@@ -224,7 +224,15 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
 
             # 1) Station & System info from the <h2>
             header = soup.find("h2")
+            if header is None:
+                print(f"[gold] missing <h2> header on {url}; skipping")
+                continue
+
             a_tags = header.find_all("a", href=True)
+            if len(a_tags) < 2:
+                print(f"[gold] incomplete header links on {url}; skipping")
+                continue
+
             st_name = a_tags[0].get_text(strip=True)
             system_name = a_tags[1].get_text(strip=True)
             system_address = f"https://inara.cz{a_tags[1]['href']}"
@@ -234,11 +242,28 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                 link = soup.find("a", string=metal)
                 if not link:
                     continue
+
                 row = link.find_parent("tr")
+                if row is None:
+                    print(f"[gold] no table row for {metal} at {url}; skipping entry")
+                    continue
+
                 cells = row.find_all("td")
+                if len(cells) < 5:
+                    print(
+                        f"[gold] expected >=5 <td> cells for {metal} at {url}, got {len(cells)}"
+                    )
+                    continue
+
                 # buy price = 4th <td>, stock = 5th <td>
-                buy_price = int(cells[3]["data-order"])
-                stock = int(cells[4]["data-order"])
+                try:
+                    buy_price = int(cells[3].get("data-order") or "0")
+                    stock = int(cells[4].get("data-order") or "0")
+                except (TypeError, ValueError):
+                    print(
+                        f"[gold] non-numeric price/stock for {metal} at {url}; skipping entry"
+                    )
+                    continue
                 print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
                 if buy_price > 28_000 and stock > 15_000:
                     station_id = re.search(r"/(\d+)/$", url).group(1)
