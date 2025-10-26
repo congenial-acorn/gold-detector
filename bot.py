@@ -146,6 +146,8 @@ queue: asyncio.Queue[str] = asyncio.Queue()
 _sent_since_last_loop_by_guild: set[int] = set()
 ping_queue: asyncio.Queue[int] = asyncio.Queue()
 
+_background_started = False
+
 # Per-server and per-message cooldown state
 
 
@@ -733,6 +735,13 @@ async def on_ready():
     if ROLE_NAME:
         log(f"Ping role on cycle complete: @{ROLE_NAME}")
     log(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
+
+    global _background_started
+    if _background_started:
+        log("on_ready(): background tasks already running; skipping re-initialization.")
+        return
+
+    _background_started = True
 
     # Wire gold.py -> async queues (thread-safe)
     if hasattr(gold, "set_emitter"):
