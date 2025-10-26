@@ -1,3 +1,12 @@
+## [1.2.2] - 2025-10-25
+### Changed
+- Restored the monitoring loop's default 30-minute sleep and allow overriding it with the `GOLD_MONITOR_INTERVAL_SECONDS` environment variable. (#5)
+
+### Fix
+- Skip Inara stations that are missing header links or pricing data to avoid crashes when parsing HTML. (#4)
+- Reuse the cached cooldown timedelta inside the monitor loop so duplicate alerts are not emitted prematurely. (#6)
+- Reset the Discord background startup flag if initialization fails, ensuring background tasks can restart cleanly. (#8)
+
 ## [1.2.1] - 2025-10-18
 ### Fix
 - Fixed issue causing role pings to be sent even when no messages were received from the bot.
