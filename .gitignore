@@ -1,6 +1,5 @@
 # Secrets / env files
 .env
-.env
 !.env.example        # keep a template in the repo
 .envrc
 # storage files
@@ -217,3 +216,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+/.idea/.gitignore
+/.idea/gold-detector.iml
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/inspectionProfiles/Project_Default.xml
+/.idea/vcs.xml
