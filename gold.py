@@ -275,9 +275,7 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                     st_type = get_station_type(station_id)
                     key = f"{station_id}-{metal}"
                     last_time = last_ping.get(key)
-                    if not last_time or (now - last_time) > datetime.timedelta(
-                        hours=cooldown_hours
-                    ):
+                    if not last_time or (now - last_time) > cooldown:
                         # build and send the message
                         msg = (
                             f"Hidden market detected at {st_name} ({st_type}), <{url}>\n"
