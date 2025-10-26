@@ -146,6 +146,8 @@ queue: asyncio.Queue[str] = asyncio.Queue()
 _sent_since_last_loop_by_guild: set[int] = set()
 ping_queue: asyncio.Queue[int] = asyncio.Queue()
 
+_background_started = False
+
 # Per-server and per-message cooldown state
 
 
@@ -734,76 +736,86 @@ async def on_ready():
         log(f"Ping role on cycle complete: @{ROLE_NAME}")
     log(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
 
-    # Wire gold.py -> async queues (thread-safe)
-    if hasattr(gold, "set_emitter"):
-        gold.set_emitter(
-            lambda m: client.loop.call_soon_threadsafe(queue.put_nowait, m)
-        )
-        log("Emitter registered via gold.set_emitter(...)")
+    global _background_started
+    if _background_started:
+        log("on_ready(): background tasks already running; skipping re-initialization.")
+        return
 
-    client.loop.create_task(_ping_loop())
-    if hasattr(gold, "set_loop_done_emitter"):
-        gold.set_loop_done_emitter(_loop_done_handler)
-        log("Loop-done emitter registered via gold.set_loop_done_emitter(...)")
-    else:
-        # fallback monkey-patch if needed
-        if hasattr(gold, "send_to_discord") and callable(
-            getattr(gold, "send_to_discord")
-        ):
-            setattr(
-                gold,
-                "send_to_discord",
-                lambda m: client.loop.call_soon_threadsafe(queue.put_nowait, m),
-            )
-            log("Emitter installed by monkey-patching gold.send_to_discord(...)")
-
-    async def _cooldown_snapshot_loop():
-        while True:
-            _prune_cooldown_map(_server_message_cooldowns, COOLDOWN_SECONDS)
-            _prune_cooldown_map(_user_message_cooldowns, COOLDOWN_SECONDS)
-            _save_nested_cooldowns(SERVER_CD_FILE, _server_message_cooldowns)
-            _save_nested_cooldowns(USER_CD_FILE, _user_message_cooldowns)
-            await asyncio.sleep(60)
-
+    _background_started = True
     try:
-        # make slash commands available globally (works in DMs if dm_permission=True)
-        await tree.sync()
-        log("Slash commands synced.")
-    except Exception as e:
-        log(f"Slash command sync failed: {e}")
+        # Wire gold.py -> async queues (thread-safe)
+        if hasattr(gold, "set_emitter"):
+            gold.set_emitter(
+                lambda m: client.loop.call_soon_threadsafe(queue.put_nowait, m)
+            )
+            log("Emitter registered via gold.set_emitter(...)")
 
-    # Start gold.py forever (your existing code with backoff)
-    def run_gold_forever():
-        max_backoff = 3600
-        base = 5
-        backoff = base
-        while True:
-            try:
-                if hasattr(gold, "main") and callable(getattr(gold, "main")):
-                    gold.main()
-                    backoff = base
-                else:
-                    log(
-                        "ERROR: gold.py has no main(); move your __main__ code into a main() function."
-                    )
-                    break
-            except KeyboardInterrupt:
-                raise
-            except BaseException as e:
-                s = str(e)
-                if "429" in s:
-                    log(f"[gold.py] 429; restarting in {backoff}s...")
-                else:
-                    log(f"[gold.py] crashed: {e}; restarting in {backoff}s...")
-                time.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff)
+        client.loop.create_task(_ping_loop())
+        if hasattr(gold, "set_loop_done_emitter"):
+            gold.set_loop_done_emitter(_loop_done_handler)
+            log("Loop-done emitter registered via gold.set_loop_done_emitter(...)")
+        else:
+            # fallback monkey-patch if needed
+            if hasattr(gold, "send_to_discord") and callable(
+                getattr(gold, "send_to_discord")
+            ):
+                setattr(
+                    gold,
+                    "send_to_discord",
+                    lambda m: client.loop.call_soon_threadsafe(queue.put_nowait, m),
+                )
+                log("Emitter installed by monkey-patching gold.send_to_discord(...)")
 
-    threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
-    log("Started gold.py in background thread.")
+        async def _cooldown_snapshot_loop():
+            while True:
+                _prune_cooldown_map(_server_message_cooldowns, COOLDOWN_SECONDS)
+                _prune_cooldown_map(_user_message_cooldowns, COOLDOWN_SECONDS)
+                _save_nested_cooldowns(SERVER_CD_FILE, _server_message_cooldowns)
+                _save_nested_cooldowns(USER_CD_FILE, _user_message_cooldowns)
+                await asyncio.sleep(60)
 
-    # Start dispatchers
-    asyncio.create_task(_cooldown_snapshot_loop())
-    asyncio.create_task(_dispatcher_loop())  # existing message dispatcher
+        try:
+            # make slash commands available globally (works in DMs if dm_permission=True)
+            await tree.sync()
+            log("Slash commands synced.")
+        except Exception as e:
+            log(f"Slash command sync failed: {e}")
+
+        # Start gold.py forever (your existing code with backoff)
+        def run_gold_forever():
+            max_backoff = 3600
+            base = 5
+            backoff = base
+            while True:
+                try:
+                    if hasattr(gold, "main") and callable(getattr(gold, "main")):
+                        gold.main()
+                        backoff = base
+                    else:
+                        log(
+                            "ERROR: gold.py has no main(); move your __main__ code into a main() function."
+                        )
+                        break
+                except KeyboardInterrupt:
+                    raise
+                except BaseException as e:
+                    s = str(e)
+                    if "429" in s:
+                        log(f"[gold.py] 429; restarting in {backoff}s...")
+                    else:
+                        log(f"[gold.py] crashed: {e}; restarting in {backoff}s...")
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, max_backoff)
+
+        threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
+        log("Started gold.py in background thread.")
+
+        # Start dispatchers
+        asyncio.create_task(_cooldown_snapshot_loop())
+        asyncio.create_task(_dispatcher_loop())  # existing message dispatcher
+    except Exception:
+        _background_started = False
+        raise
 
 
 if __name__ == "__main__":
