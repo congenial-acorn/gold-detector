@@ -53,6 +53,11 @@ _DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (inaragold/1.0)"}
 _last_http_call = 0.0
 _rl_lock = threading.Lock()
 
+# Monitor loop delay (seconds)
+_MONITOR_INTERVAL_SECONDS = float(
+    os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(30 * 60))
+)
+
 
 def http_get(url: str, *, headers=None, timeout=None):
     """
@@ -293,9 +298,13 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                 print(f"[gold] loop_done emit failed: {e}")
 
         # wait before checking again
-        print("Loop finished. Sleeping for 30 minutes.")
-        #time.sleep(30 * 60)  # 30 minutes
-        time.sleep(15)
+        interval_seconds = max(0.0, _MONITOR_INTERVAL_SECONDS)
+        minutes = interval_seconds / 60.0
+        print(
+            "Loop finished. Sleeping for "
+            f"{interval_seconds:.0f} seconds ({minutes:.1f} minutes)."
+        )
+        time.sleep(interval_seconds)
 
 
 def main():
