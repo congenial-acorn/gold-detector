@@ -12,8 +12,9 @@ from typing import Optional, cast
 from bs4 import BeautifulSoup, Tag, NavigableString, PageElement
 
 # Configure logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
@@ -38,9 +39,12 @@ def send_to_discord(message: str):
     """gold.py will keep calling this. The bot provides the real emitter."""
     if _emit is not None:
         _emit(message)
-        logger.info(f"Alert sent to Discord: {message[:100]}...")
+        # Log first line only to avoid multi-line log confusion
+        first_line = message.split('\n')[0]
+        logger.info(f"Alert sent to Discord: {first_line[:150]}")
     else:
-        logger.warning(f"Discord emitter not wired, message not sent: {message[:100]}...")
+        first_line = message.split('\n')[0]
+        logger.warning(f"Discord emitter not wired, message not sent: {first_line[:150]}")
 
 
 def set_loop_done_emitter(func):  # <-- ADD THIS
@@ -69,7 +73,7 @@ _rl_lock = threading.Lock()
 
 # Monitor loop delay (seconds)
 _MONITOR_INTERVAL_SECONDS = float(
-    os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(30 * 60))
+    os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(1800)) # default: 30 minutes
 )
 
 
