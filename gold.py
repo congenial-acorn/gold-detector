@@ -6,8 +6,21 @@ import os
 import threading
 import requests
 import functools
+import logging
+import sys
 from typing import Optional, cast
 from bs4 import BeautifulSoup, Tag, NavigableString, PageElement
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger('gold')
 
 # ---- EMITTER WIRING ---------------------------------------------------------
 
@@ -25,8 +38,9 @@ def send_to_discord(message: str):
     """gold.py will keep calling this. The bot provides the real emitter."""
     if _emit is not None:
         _emit(message)
+        logger.info(f"Alert sent to Discord: {message[:100]}...")
     else:
-        print(f"[Discord] (noop) {message}")  # falls back to stdout if bot not wired
+        logger.warning(f"Discord emitter not wired, message not sent: {message[:100]}...")
 
 
 def set_loop_done_emitter(func):  # <-- ADD THIS
@@ -72,6 +86,7 @@ def http_get(url: str, *, headers=None, timeout=None):
         now = time.monotonic()
         wait = max(0.0, (_last_http_call + _RATE_LIMIT_SECONDS) - now)
     if wait > 0:
+        logger.debug(f"Throttling HTTP request for {wait:.2f}s")
         time.sleep(wait)
 
     # Merge headers
@@ -84,25 +99,53 @@ def http_get(url: str, *, headers=None, timeout=None):
     timeout = _HTTP_TIMEOUT if timeout is None else timeout
 
     while True:
-        resp = _SESSION.get(url, headers=merged_headers, timeout=timeout)
-        # mark call time on ANY attempt (even if not 200)
-        with _rl_lock:
-            _last_http_call = time.monotonic()
+        try:
+            logger.debug(f"HTTP GET: {url}")
+            resp = _SESSION.get(url, headers=merged_headers, timeout=timeout)
+            # mark call time on ANY attempt (even if not 200)
+            with _rl_lock:
+                _last_http_call = time.monotonic()
 
-        if resp.status_code == 429:
-            # Respect Retry-After if provided; otherwise exponential backoff
-            retry_after = resp.headers.get("Retry-After")
-            try:
-                delay = float(retry_after) if retry_after is not None else backoff
-            except ValueError:
-                delay = backoff
-            delay = min(delay, _MAX_BACKOFF)
-            time.sleep(delay)
-            backoff = min(backoff * 2.0, _MAX_BACKOFF)
-            continue
+            logger.debug(f"HTTP {resp.status_code} from {url}")
 
-        resp.raise_for_status()
-        return resp
+            # Check for IP block before checking status code
+            if resp.status_code == 200 and "Access Temporarily Restricted" in resp.text:
+                logger.error(f"IP BLOCKED by {url.split('/')[2]}")
+                logger.error(f"Response preview: {resp.text[:500]}")
+                raise requests.exceptions.HTTPError(
+                    f"IP address blocked by {url.split('/')[2]}. "
+                    "Check logs for contact information.",
+                    response=resp
+                )
+
+            if resp.status_code == 429:
+                # Respect Retry-After if provided; otherwise exponential backoff
+                retry_after = resp.headers.get("Retry-After")
+                try:
+                    delay = float(retry_after) if retry_after is not None else backoff
+                except ValueError:
+                    delay = backoff
+                delay = min(delay, _MAX_BACKOFF)
+                logger.warning(f"HTTP 429 (rate limited) from {url}, retrying in {delay:.1f}s")
+                time.sleep(delay)
+                backoff = min(backoff * 2.0, _MAX_BACKOFF)
+                continue
+
+            resp.raise_for_status()
+            return resp
+
+        except requests.exceptions.Timeout as e:
+            logger.error(f"HTTP timeout for {url}: {e}")
+            raise
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"HTTP connection error for {url}: {e}")
+            raise
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error for {url}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during HTTP GET {url}: {e}", exc_info=True)
+            raise
 
 
 # ---- PARSERS & HELPERS ------------------------------------------------------
@@ -122,8 +165,9 @@ def get_station_market_urls(near_urls):
                     sid = m.group(1)
                     market_urls.append(f"https://inara.cz/elite/station-market/{sid}/")
         except Exception as e:
-            print(f"[gold] failed {url}: {e}")
+            logger.error(f"Failed to fetch station list from {url}: {e}", exc_info=True)
             continue
+    logger.info(f"Found {len(market_urls)} station market URLs")
     # preserve order, drop dupes
     return list(dict.fromkeys(market_urls))
 
@@ -213,96 +257,125 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
     last_ping = {}  # key -> datetime of last ping
     cooldown = datetime.timedelta(hours=cooldown_hours)
 
+    logger.info(f"Starting monitor loop: checking {len(metals)} metals with {cooldown_hours}h cooldown")
+
     while True:
-        now = datetime.datetime.now(timezone.utc)
-        market_urls = get_station_market_urls(near_urls)
+        try:
+            now = datetime.datetime.now(timezone.utc)
+            logger.info("=== Beginning new scan cycle ===")
+            market_urls = get_station_market_urls(near_urls)
 
-        alive_ids = {re.search(r"/(\d+)/$", u).group(1) for u in market_urls}
-        for key in list(last_ping):
-            station_id, metal = key.split("-", 1)
-            if station_id not in alive_ids:
+            alive_ids = {re.search(r"/(\d+)/$", u).group(1) for u in market_urls}
+            pruned = [k for k in list(last_ping) if k.split("-", 1)[0] not in alive_ids]
+            for key in pruned:
                 del last_ping[key]
+            if pruned:
+                logger.info(f"Pruned {len(pruned)} stale cooldown entries")
 
-        for url in market_urls:
-            resp = http_get(url)
-            soup = BeautifulSoup(resp.text, "html.parser")
+            stations_checked = 0
+            alerts_sent = 0
 
-            # 1) Station & System info from the <h2>
-            header = soup.find("h2")
-            if header is None:
-                print(f"[gold] missing <h2> header on {url}; skipping")
-                continue
-
-            a_tags = header.find_all("a", href=True)
-            if len(a_tags) < 2:
-                print(f"[gold] incomplete header links on {url}; skipping")
-                continue
-
-            st_name = a_tags[0].get_text(strip=True)
-            system_name = a_tags[1].get_text(strip=True)
-            system_address = f"https://inara.cz{a_tags[1]['href']}"
-
-            # 2) For each metal
-            for metal in metals:
-                link = soup.find("a", string=metal)
-                if not link:
-                    continue
-
-                row = link.find_parent("tr")
-                if row is None:
-                    print(f"[gold] no table row for {metal} at {url}; skipping entry")
-                    continue
-
-                cells = row.find_all("td")
-                if len(cells) < 5:
-                    print(
-                        f"[gold] expected >=5 <td> cells for {metal} at {url}, got {len(cells)}"
-                    )
-                    continue
-
-                # buy price = 4th <td>, stock = 5th <td>
+            for url in market_urls:
                 try:
-                    buy_price = int(cells[3].get("data-order") or "0")
-                    stock = int(cells[4].get("data-order") or "0")
-                except (TypeError, ValueError):
-                    print(
-                        f"[gold] non-numeric price/stock for {metal} at {url}; skipping entry"
-                    )
+                    resp = http_get(url)
+                    soup = BeautifulSoup(resp.text, "html.parser")
+
+                    # 1) Station & System info from the <h2>
+                    header = soup.find("h2")
+                    if header is None:
+                        logger.warning(f"Missing <h2> header on {url}; skipping")
+                        continue
+
+                    a_tags = header.find_all("a", href=True)
+                    if len(a_tags) < 2:
+                        logger.warning(f"Incomplete header links on {url}; skipping")
+                        continue
+
+                    st_name = a_tags[0].get_text(strip=True)
+                    system_name = a_tags[1].get_text(strip=True)
+                    system_address = f"https://inara.cz{a_tags[1]['href']}"
+
+                    stations_checked += 1
+
+                    # 2) For each metal
+                    for metal in metals:
+                        link = soup.find("a", string=metal)
+                        if not link:
+                            continue
+
+                        row = link.find_parent("tr")
+                        if row is None:
+                            logger.warning(f"No table row for {metal} at {url}; skipping entry")
+                            continue
+
+                        cells = row.find_all("td")
+                        if len(cells) < 5:
+                            logger.warning(
+                                f"Expected >=5 <td> cells for {metal} at {url}, got {len(cells)}"
+                            )
+                            continue
+
+                        # buy price = 4th <td>, stock = 5th <td>
+                        try:
+                            buy_price = int(cells[3].get("data-order") or "0")
+                            stock = int(cells[4].get("data-order") or "0")
+                        except (TypeError, ValueError):
+                            logger.warning(
+                                f"Non-numeric price/stock for {metal} at {url}; skipping entry"
+                            )
+                            continue
+
+                        logger.debug(f"{metal} @ {st_name}: price={buy_price}, stock={stock}")
+
+                        if buy_price > 28_000 and stock > 15_000:
+                            station_id = re.search(r"/(\d+)/$", url).group(1)
+                            st_type = get_station_type(station_id)
+                            key = f"{station_id}-{metal}"
+                            last_time = last_ping.get(key)
+                            if not last_time or (now - last_time) > cooldown:
+                                # build and send the message
+                                msg = (
+                                    f"Hidden market detected at {st_name} ({st_type}), <{url}>\n"
+                                    f"System: {system_name}, <{system_address}>\n"
+                                    f"{metal} stock: {stock}"
+                                )
+                                send_to_discord(msg)
+                                last_ping[key] = now
+                                alerts_sent += 1
+                                logger.info(
+                                    f"ALERT: {metal} @ {st_name} - price={buy_price}, stock={stock}, "
+                                    f"cooldown until {now + cooldown}"
+                                )
+                            else:
+                                remaining = cooldown - (now - last_time)
+                                logger.debug(
+                                    f"Skipping {metal} @ {st_name} - still on cooldown "
+                                    f"({remaining.total_seconds()/3600:.1f}h remaining)"
+                                )
+                except Exception as e:
+                    logger.error(f"Error processing station {url}: {e}", exc_info=True)
                     continue
-                print(f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}")
-                if buy_price > 28_000 and stock > 15_000:
-                    station_id = re.search(r"/(\d+)/$", url).group(1)
-                    st_type = get_station_type(station_id)
-                    key = f"{station_id}-{metal}"
-                    last_time = last_ping.get(key)
-                    if not last_time or (now - last_time) > cooldown:
-                        # build and send the message
-                        msg = (
-                            f"Hidden market detected at {st_name} ({st_type}), <{url}>\n"
-                            f"System: {system_name}, <{system_address}>\n"
-                            f"{metal} stock: {stock}"
-                        )
-                        send_to_discord(msg)
-                        last_ping[key] = now
-                        print(
-                            f"  • {metal} @ {st_name}: price={buy_price}, stock={stock}"
-                        )
-                        print(f"    ↪ alert sent, cooldown until {now + cooldown}")
 
-        if _emit_loop_done:
-            try:
-                _emit_loop_done()
-            except Exception as e:
-                print(f"[gold] loop_done emit failed: {e}")
+            logger.info(f"Scan complete: checked {stations_checked} stations, sent {alerts_sent} alerts")
 
-        # wait before checking again
-        interval_seconds = max(0.0, _MONITOR_INTERVAL_SECONDS)
-        minutes = interval_seconds / 60.0
-        print(
-            "Loop finished. Sleeping for "
-            f"{interval_seconds:.0f} seconds ({minutes:.1f} minutes)."
-        )
-        time.sleep(interval_seconds)
+            if _emit_loop_done:
+                try:
+                    _emit_loop_done()
+                except Exception as e:
+                    logger.error(f"Loop-done emitter failed: {e}", exc_info=True)
+
+            # wait before checking again
+            interval_seconds = max(0.0, _MONITOR_INTERVAL_SECONDS)
+            minutes = interval_seconds / 60.0
+            logger.info(
+                f"Sleeping for {interval_seconds:.0f} seconds ({minutes:.1f} minutes) "
+                f"until next scan at {datetime.datetime.now() + datetime.timedelta(seconds=interval_seconds)}"
+            )
+            time.sleep(interval_seconds)
+
+        except Exception as e:
+            logger.error(f"Fatal error in monitor loop: {e}", exc_info=True)
+            raise
 
 
 def main():

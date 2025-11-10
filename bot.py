@@ -2,6 +2,8 @@ import os
 import time
 import asyncio
 import threading
+import logging
+import sys
 from typing import Optional, Dict
 from pathlib import Path
 import discord
@@ -10,6 +12,17 @@ from dotenv import load_dotenv, find_dotenv
 import gold  # gold.py must be importable (same folder or on PYTHONPATH)
 import json
 from hashlib import blake2b
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger('bot')
 
 
 def message_key(s: str) -> int:
@@ -51,8 +64,10 @@ HELP_URL = "https://github.com/congenial-acorn/gold-detector/tree/main?tab=readm
 
 
 def log(*a):
+    """Legacy logging function - use logger.info() instead"""
     if BOT_VERBOSE:
-        print(*a, flush=True)
+        msg = " ".join(str(x) for x in a)
+        logger.info(msg)
 
 
 if not TOKEN:
@@ -607,6 +622,7 @@ async def _should_send_and_update(guild_id: int, message_id: int, now: float):
 
 async def _send_to_guild(guild: discord.Guild, content: str, message_id: int) -> bool:
     if guild.id in _guild_optout:
+        logger.debug(f"[{guild.name}] Skipping - guild opted out")
         return False
 
     now = time.time()
@@ -614,7 +630,7 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int) ->
 
     # Debug server gate
     if DEBUG_MODE and guild_id != DEBUG_SERVER_ID:
-        log(
+        logger.debug(
             f"[DEBUG MODE] Skipping message to server {guild_id}, only sending to {DEBUG_SERVER_ID}."
         )
         return False
@@ -625,7 +641,7 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int) ->
     )
     if not allow:
         hrs = (remaining or 0) / 3600
-        log(
+        logger.debug(
             f"[{guild.name}] Cooldown active for msg {message_id}; skipping (~{hrs:.2f}h)."
         )
         return False
@@ -633,18 +649,24 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int) ->
     # Resolve channel with perms
     ch = _resolve_sendable_channel(guild)
     if not ch:
-        log(f"[{guild.name}] No sendable channel resolved; skipping.")
+        logger.warning(f"[{guild.name}] No sendable channel resolved; skipping.")
         return False
 
     try:
         await ch.send(content, allowed_mentions=discord.AllowedMentions.none())
         if prev_timestamp is None:
-            log(f"[{guild.name}] Sent to #{ch.name}.")
+            logger.info(f"[{guild.name}] Alert sent to #{ch.name} (first time)")
         else:
-            log(f"[{guild.name}] Sent to #{ch.name}. (Cooldown keyed)")
+            logger.info(f"[{guild.name}] Alert sent to #{ch.name} (cooldown expired)")
         return True
+    except discord.Forbidden as e:
+        logger.error(f"[{guild.name}] Permission denied sending to #{ch.name}: {e}")
+        return False
+    except discord.HTTPException as e:
+        logger.error(f"[{guild.name}] HTTP error sending to #{ch.name}: {e}", exc_info=True)
+        return False
     except Exception as e:
-        log(f"[{guild.name}] ERROR sending: {e}")
+        logger.error(f"[{guild.name}] Unexpected error sending to #{ch.name}: {e}", exc_info=True)
         return False
 
 
@@ -728,13 +750,17 @@ async def on_ready():
         activity=discord.Activity(type=discord.ActivityType.watching, name="for /help"),
         status=discord.Status.online,  # or .idle / .dnd / .invisible
     )
-    print(f"Logged in as {client.user}")
-    log(f"Default channel: #{ALERT_CHANNEL_NAME or DEFAULT_ALERT_CHANNEL_NAME}")
-    log(f"Default ping role: @{ROLE_NAME or DEFAULT_ROLE_NAME}")
+    logger.info(f"=== Bot Ready ===")
+    logger.info(f"Logged in as {client.user} (ID: {client.user.id})")
+    logger.info(f"Connected to {len(client.guilds)} guilds")
+    logger.info(f"Default channel: #{ALERT_CHANNEL_NAME or DEFAULT_ALERT_CHANNEL_NAME}")
+    logger.info(f"Default ping role: @{ROLE_NAME or DEFAULT_ROLE_NAME}")
 
     if ROLE_NAME:
         log(f"Ping role on cycle complete: @{ROLE_NAME}")
-    log(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
+    logger.info(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
+    logger.info(f"Monitor interval: {os.getenv('GOLD_MONITOR_INTERVAL_SECONDS', '1800')}s")
+    logger.info(f"HTTP cooldown: {os.getenv('GOLD_HTTP_COOLDOWN', '1.0')}s")
 
     global _background_started
     if _background_started:
@@ -786,26 +812,58 @@ async def on_ready():
             max_backoff = 3600
             base = 5
             backoff = base
+            consecutive_failures = 0
             while True:
                 try:
                     if hasattr(gold, "main") and callable(getattr(gold, "main")):
+                        logger.info("Starting gold.py main loop")
                         gold.main()
+                        # If main() returns normally (shouldn't happen), reset backoff
                         backoff = base
+                        consecutive_failures = 0
+                        logger.warning("gold.py main() returned unexpectedly, restarting immediately")
                     else:
-                        log(
+                        logger.error(
                             "ERROR: gold.py has no main(); move your __main__ code into a main() function."
                         )
                         break
                 except KeyboardInterrupt:
+                    logger.info("Received KeyboardInterrupt, shutting down gold.py thread")
                     raise
                 except BaseException as e:
+                    consecutive_failures += 1
                     s = str(e)
-                    if "429" in s:
-                        log(f"[gold.py] 429; restarting in {backoff}s...")
+
+                    # Detailed error logging
+                    logger.error(
+                        f"gold.py crashed (attempt #{consecutive_failures}): {type(e).__name__}: {e}",
+                        exc_info=True
+                    )
+
+                    # Check for specific error types
+                    if "IP address blocked" in s or "Access Temporarily Restricted" in s:
+                        logger.error(
+                            "CRITICAL: IP blocked by inara.cz. "
+                            "Contact inara@inara.cz with your IP address to resolve. "
+                            f"Will retry in {backoff}s but likely to fail until unblocked."
+                        )
+                    elif "429" in s:
+                        logger.warning(f"HTTP 429 rate limit; restarting in {backoff}s")
+                    elif "Connection" in s or "Timeout" in s:
+                        logger.error(f"Network error: {s}; restarting in {backoff}s")
                     else:
-                        log(f"[gold.py] crashed: {e}; restarting in {backoff}s...")
+                        logger.error(f"Unexpected error; restarting in {backoff}s")
+
+                    # Warn if failures are piling up
+                    if consecutive_failures >= 5:
+                        logger.warning(
+                            f"gold.py has crashed {consecutive_failures} times consecutively. "
+                            "Check for persistent issues."
+                        )
+
                     time.sleep(backoff)
                     backoff = min(backoff * 2, max_backoff)
+                    logger.info(f"Attempting to restart gold.py (backoff now {backoff}s)")
 
         threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
         log("Started gold.py in background thread.")
@@ -818,5 +876,39 @@ async def on_ready():
         raise
 
 
+@client.event
+async def on_disconnect():
+    logger.warning("Discord connection lost (on_disconnect event)")
+
+
+@client.event
+async def on_resumed():
+    logger.info("Discord connection resumed successfully")
+
+
+@client.event
+async def on_error(event, *args, **kwargs):
+    logger.error(f"Discord event error in {event}: {args} {kwargs}", exc_info=True)
+
+
+@client.event
+async def on_guild_join(guild):
+    logger.info(f"Joined new guild: {guild.name} (ID: {guild.id}, members: {guild.member_count})")
+
+
+@client.event
+async def on_guild_remove(guild):
+    logger.info(f"Removed from guild: {guild.name} (ID: {guild.id})")
+
+
 if __name__ == "__main__":
-    client.run(TOKEN)
+    logger.info("Starting Discord bot...")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Discord.py version: {discord.__version__}")
+    try:
+        client.run(TOKEN)
+    except KeyboardInterrupt:
+        logger.info("Received KeyboardInterrupt, shutting down")
+    except Exception as e:
+        logger.critical(f"Fatal error running bot: {e}", exc_info=True)
+        raise

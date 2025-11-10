@@ -1,3 +1,13 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
+/.idea/
+
 # Secrets / env files
 .env
 !.env.example        # keep a template in the repo
@@ -223,3 +233,4 @@ __marimo__/
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/inspectionProfiles/Project_Default.xml
 /.idea/vcs.xml
+.idea/deployment.xml
