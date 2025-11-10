@@ -11,16 +11,7 @@ import sys
 from typing import Optional, cast
 from bs4 import BeautifulSoup, Tag, NavigableString, PageElement
 
-# Configure logging
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Get logger (logging is configured by bot.py before this module is imported)
 logger = logging.getLogger('gold')
 
 # ---- EMITTER WIRING ---------------------------------------------------------
@@ -412,4 +403,14 @@ def main():
 
 
 if __name__ == "__main__":
+    # Configure logging if running standalone (not imported by bot.py)
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
     main()

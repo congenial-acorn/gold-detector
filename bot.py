@@ -13,7 +13,19 @@ import gold  # gold.py must be importable (same folder or on PYTHONPATH)
 import json
 from hashlib import blake2b
 
-# Configure logging early (before loading .env so it doesn't depend on it yet)
+
+def message_key(s: str) -> int:
+    # 8-byte digest -> 64-bit int; tiny chance of collision, stable across restarts
+    h = blake2b(s.encode("utf-8"), digest_size=8)
+    return int.from_bytes(h.digest(), "big")
+
+
+# Load .env FIRST (CWD first, then next to this file)
+_ = load_dotenv(find_dotenv())
+if not os.getenv("DISCORD_TOKEN"):
+    load_dotenv(Path(__file__).with_name(".env"))
+
+# Configure logging AFTER .env is loaded so LOG_LEVEL can be read from .env
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -24,18 +36,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger('bot')
-
-
-def message_key(s: str) -> int:
-    # 8-byte digest -> 64-bit int; tiny chance of collision, stable across restarts
-    h = blake2b(s.encode("utf-8"), digest_size=8)
-    return int.from_bytes(h.digest(), "big")
-
-
-# Load .env (CWD first, then next to this file)
-_ = load_dotenv(find_dotenv())
-if not os.getenv("DISCORD_TOKEN"):
-    load_dotenv(Path(__file__).with_name(".env"))
 
 
 TOKEN = os.getenv("DISCORD_TOKEN")
