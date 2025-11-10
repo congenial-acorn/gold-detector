@@ -4,6 +4,7 @@ Version 1.2.2 has been deployed. Last updated: 10/25, 2:38 AM UTC.
 Read the changelog [here](https://github.com/congenial-acorn/gold-detector/blob/main/CHANGELOG.md). Scroll down for bot info.
 
 # Gold Detector Discord Bot
+## An Elite: Dangerous 3rd party tool
 Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151
 
 Please report all bugs by creating issues!
