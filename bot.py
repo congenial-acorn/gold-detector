@@ -13,9 +13,10 @@ import gold  # gold.py must be importable (same folder or on PYTHONPATH)
 import json
 from hashlib import blake2b
 
-# Configure logging
+# Configure logging early (before loading .env so it doesn't depend on it yet)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
