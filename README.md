@@ -1,7 +1,8 @@
 ## STATUS
 Version 1.2.4 has been deployed. Last updated: 11/18, 7:49 PM UTC.
+> Releases will now be created for each version. Always download source code from releases!
 
-Read the changelog [here](https://github.com/congenial-acorn/gold-detector/blob/main/CHANGELOG.md). Scroll down for bot info.
+Scroll down for bot info.
 
 # Gold Detector Discord Bot
 ## An Elite: Dangerous 3rd party tool
