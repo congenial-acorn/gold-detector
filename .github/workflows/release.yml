@@ -1,0 +1,68 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          # Remove 'v' prefix from tag to get version number
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+
+          # Extract the section for this version from CHANGELOG.md
+          # This looks for lines starting with "## [VERSION]" and captures everything
+          # until the next "## [" line (next version) or end of file
+
+          NOTES=$(awk -v ver="$VERSION" '
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "\\[" ver "\\]") {
+                found=1
+                next
+              }
+            }
+            found { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$NOTES" ]; then
+            echo "Error: Could not find version $VERSION in CHANGELOG.md"
+            exit 1
+          fi
+
+          # Save to file for GitHub release
+          echo "$NOTES" > release_notes.txt
+
+          # Also output for debugging
+          echo "Release notes extracted for version $VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ steps.get_version.outputs.tag }}
+          body_path: release_notes.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
