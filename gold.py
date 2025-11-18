@@ -12,7 +12,7 @@ from typing import Optional, cast
 from bs4 import BeautifulSoup, Tag, NavigableString, PageElement
 
 # Get logger (logging is configured by bot.py before this module is imported)
-logger = logging.getLogger('gold')
+logger = logging.getLogger("gold")
 
 # ---- EMITTER WIRING ---------------------------------------------------------
 
@@ -31,11 +31,13 @@ def send_to_discord(message: str):
     if _emit is not None:
         _emit(message)
         # Log first line only to avoid multi-line log confusion
-        first_line = message.split('\n')[0]
+        first_line = message.split("\n")[0]
         logger.info(f"Alert sent to Discord: {first_line[:150]}")
     else:
-        first_line = message.split('\n')[0]
-        logger.warning(f"Discord emitter not wired, message not sent: {first_line[:150]}")
+        first_line = message.split("\n")[0]
+        logger.warning(
+            f"Discord emitter not wired, message not sent: {first_line[:150]}"
+        )
 
 
 def set_loop_done_emitter(func):  # <-- ADD THIS
@@ -64,7 +66,7 @@ _rl_lock = threading.Lock()
 
 # Monitor loop delay (seconds)
 _MONITOR_INTERVAL_SECONDS = float(
-    os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(1800)) # default: 30 minutes
+    os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(1800))  # default: 30 minutes
 )
 
 
@@ -110,7 +112,7 @@ def http_get(url: str, *, headers=None, timeout=None):
                 raise requests.exceptions.HTTPError(
                     f"IP address blocked by {url.split('/')[2]}. "
                     "Check logs for contact information.",
-                    response=resp
+                    response=resp,
                 )
 
             if resp.status_code == 429:
@@ -121,7 +123,9 @@ def http_get(url: str, *, headers=None, timeout=None):
                 except ValueError:
                     delay = backoff
                 delay = min(delay, _MAX_BACKOFF)
-                logger.warning(f"HTTP 429 (rate limited) from {url}, retrying in {delay:.1f}s")
+                logger.warning(
+                    f"HTTP 429 (rate limited) from {url}, retrying in {delay:.1f}s"
+                )
                 time.sleep(delay)
                 backoff = min(backoff * 2.0, _MAX_BACKOFF)
                 continue
@@ -252,7 +256,9 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
     last_ping = {}  # key -> datetime of last ping
     cooldown = datetime.timedelta(hours=cooldown_hours)
 
-    logger.info(f"Starting monitor loop: checking {len(metals)} metals with {cooldown_hours}h cooldown")
+    logger.info(
+        f"Starting monitor loop: checking {len(metals)} metals with {cooldown_hours}h cooldown"
+    )
 
     while True:
         try:
@@ -300,7 +306,9 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
 
                         row = link.find_parent("tr")
                         if row is None:
-                            logger.warning(f"No table row for {metal} at {url}; skipping entry")
+                            logger.warning(
+                                f"No table row for {metal} at {url}; skipping entry"
+                            )
                             continue
 
                         cells = row.find_all("td")
@@ -320,7 +328,9 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                             )
                             continue
 
-                        logger.debug(f"{metal} @ {st_name}: price={buy_price}, stock={stock}")
+                        logger.debug(
+                            f"{metal} @ {st_name}: price={buy_price}, stock={stock}"
+                        )
 
                         if buy_price > 28_000 and stock > 15_000:
                             station_id = re.search(r"/(\d+)/$", url).group(1)
@@ -351,7 +361,9 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                     logger.error(f"Error processing station {url}: {e}", exc_info=True)
                     continue
 
-            logger.info(f"Scan complete: checked {stations_checked} stations, sent {alerts_sent} alerts")
+            logger.info(
+                f"Scan complete: checked {stations_checked} stations, sent {alerts_sent} alerts"
+            )
 
             if _emit_loop_done:
                 try:
@@ -407,10 +419,8 @@ if __name__ == "__main__":
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
         level=getattr(logging, LOG_LEVEL, logging.INFO),
-        format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
+        format="[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
     main()
