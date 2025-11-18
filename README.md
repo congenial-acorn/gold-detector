@@ -1,6 +1,7 @@
 ## STATUS
 Version 1.2.4 has been deployed. Last updated: 11/18, 7:49 PM UTC.
-> Releases will now be created for each version. Always download source code from releases!
+
+Releases will now be created for each version. Always download source code from releases!
 
 Scroll down for bot info.
 
