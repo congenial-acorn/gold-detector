@@ -29,13 +29,11 @@ if not os.getenv("DISCORD_TOKEN"):
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format='[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    format="[%(asctime)s] [%(levelname)-8s] [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
-logger = logging.getLogger('bot')
+logger = logging.getLogger("bot")
 
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -664,10 +662,14 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int) ->
         logger.error(f"[{guild.name}] Permission denied sending to #{ch.name}: {e}")
         return False
     except discord.HTTPException as e:
-        logger.error(f"[{guild.name}] HTTP error sending to #{ch.name}: {e}", exc_info=True)
+        logger.error(
+            f"[{guild.name}] HTTP error sending to #{ch.name}: {e}", exc_info=True
+        )
         return False
     except Exception as e:
-        logger.error(f"[{guild.name}] Unexpected error sending to #{ch.name}: {e}", exc_info=True)
+        logger.error(
+            f"[{guild.name}] Unexpected error sending to #{ch.name}: {e}", exc_info=True
+        )
         return False
 
 
@@ -760,7 +762,9 @@ async def on_ready():
     if ROLE_NAME:
         log(f"Ping role on cycle complete: @{ROLE_NAME}")
     logger.info(f"Cooldown after each message: {COOLDOWN_HOURS:g} hours")
-    logger.info(f"Monitor interval: {os.getenv('GOLD_MONITOR_INTERVAL_SECONDS', '1800')}s")
+    logger.info(
+        f"Monitor interval: {os.getenv('GOLD_MONITOR_INTERVAL_SECONDS', '1800')}s"
+    )
     logger.info(f"HTTP cooldown: {os.getenv('GOLD_HTTP_COOLDOWN', '1.0')}s")
 
     global _background_started
@@ -822,14 +826,18 @@ async def on_ready():
                         # If main() returns normally (shouldn't happen), reset backoff
                         backoff = base
                         consecutive_failures = 0
-                        logger.warning("gold.py main() returned unexpectedly, restarting immediately")
+                        logger.warning(
+                            "gold.py main() returned unexpectedly, restarting immediately"
+                        )
                     else:
                         logger.error(
                             "ERROR: gold.py has no main(); move your __main__ code into a main() function."
                         )
                         break
                 except KeyboardInterrupt:
-                    logger.info("Received KeyboardInterrupt, shutting down gold.py thread")
+                    logger.info(
+                        "Received KeyboardInterrupt, shutting down gold.py thread"
+                    )
                     raise
                 except BaseException as e:
                     consecutive_failures += 1
@@ -838,11 +846,14 @@ async def on_ready():
                     # Detailed error logging
                     logger.error(
                         f"gold.py crashed (attempt #{consecutive_failures}): {type(e).__name__}: {e}",
-                        exc_info=True
+                        exc_info=True,
                     )
 
                     # Check for specific error types
-                    if "IP address blocked" in s or "Access Temporarily Restricted" in s:
+                    if (
+                        "IP address blocked" in s
+                        or "Access Temporarily Restricted" in s
+                    ):
                         logger.error(
                             "CRITICAL: IP blocked by inara.cz. "
                             "Contact inara@inara.cz with your IP address to resolve. "
@@ -864,9 +875,13 @@ async def on_ready():
 
                     time.sleep(backoff)
                     backoff = min(backoff * 2, max_backoff)
-                    logger.info(f"Attempting to restart gold.py (backoff now {backoff}s)")
+                    logger.info(
+                        f"Attempting to restart gold.py (backoff now {backoff}s)"
+                    )
 
-        threading.Thread(target=run_gold_forever, name="gold-runner", daemon=True).start()
+        threading.Thread(
+            target=run_gold_forever, name="gold-runner", daemon=True
+        ).start()
         log("Started gold.py in background thread.")
 
         # Start dispatchers
@@ -894,7 +909,9 @@ async def on_error(event, *args, **kwargs):
 
 @client.event
 async def on_guild_join(guild):
-    logger.info(f"Joined new guild: {guild.name} (ID: {guild.id}, members: {guild.member_count})")
+    logger.info(
+        f"Joined new guild: {guild.name} (ID: {guild.id}, members: {guild.member_count})"
+    )
 
 
 @client.event
