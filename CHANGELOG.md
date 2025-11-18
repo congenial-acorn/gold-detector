@@ -1,3 +1,27 @@
+## [1.2.4] - 2025-11-18
+### Fixed
+- **Critical: Fixed unsafe guild member lookup causing permission check failures.** The bot now properly validates `client.user` and uses `guild.me` directly instead of potentially failing back to incorrect permissions. Added detailed permission logging for debugging.
+- **Critical: Fixed race condition in ping tracking system.** Added thread-safe locking (`_sent_guilds_lock`) to protect the `_sent_since_last_loop_by_guild` set from concurrent access between the dispatcher loop and gold.py's thread, preventing lost or duplicate pings.
+- **Critical: Fixed DM cooldown being applied before message delivery.** Cooldowns are now only updated after successful message sends, preventing situations where users miss messages due to failed sends being counted against their cooldown.
+- **Critical: Fixed cooldown state loss on bot crashes.** Implemented atomic file writes with temp files and immediate persistence after each cooldown update, reducing potential data loss from 60 seconds to <1 second. Prevents duplicate messages being sent to servers/users after bot restarts.
+- **Fixed DM error handling and subscriber cleanup.** Added specific exception handling for `discord.NotFound`, `discord.Forbidden`, and `discord.HTTPException`. Users with deleted accounts or blocked DMs are now properly unsubscribed, while temporary errors (rate limits) no longer cause unsubscriptions.
+- **Fixed race conditions in ping loop.** Added comprehensive exception handling for `discord.Forbidden`, `discord.HTTPException`, and unexpected errors in `_ping_loop()`, with detailed logging for all failure paths.
+- **Fixed unbounded queue growth risk.** Added configurable size limits to message and ping queues (default: 100, configurable via `DISCORD_QUEUE_MAX_SIZE` env var) with backpressure handling. Messages are now dropped with warnings during API outages rather than causing memory exhaustion.
+- **Fixed slash command error handler suppressing errors.** Improved error handling to properly log all errors, send user-friendly messages, and only apply special handling for cooldown errors. Users now receive clear error messages instead of generic Discord timeouts.
+
+### Changed
+- Enhanced logging throughout bot.py with detailed error messages and context for easier debugging.
+- Queue emitters now handle backpressure gracefully when Discord API is unavailable.
+- Cooldown persistence now uses atomic file operations (write to temp file + rename) for safer crash recovery.
+- Background cooldown snapshot loop converted to "belt-and-suspenders" safety net since cooldowns are now persisted immediately.
+
+### Technical Details
+- Added `_sent_guilds_lock` (threading.Lock) for thread-safe ping tracking.
+- Added `_persist_server_cooldowns()` and `_persist_user_cooldowns()` helper functions.
+- Refactored `_dm_subscribers_broadcast()` to handle cooldowns and errors correctly.
+- Removed deprecated `_dm_should_send_and_update()` function.
+- Improved `_resolve_sendable_channel()` with proper null checks and detailed permission logging.
+
 ## [1.2.3] - 2025-11-10
 ### Added
 - Comprehensive structured logging with timestamps, log levels, and proper formatting.
