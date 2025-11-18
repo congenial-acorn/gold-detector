@@ -156,9 +156,11 @@ intents = discord.Intents.default()
 intents.guilds = True
 client = discord.Client(intents=intents)
 
-queue: asyncio.Queue[str] = asyncio.Queue()
+QUEUE_MAX_SIZE = int(os.getenv("DISCORD_QUEUE_MAX_SIZE", "100"))
+queue: asyncio.Queue[str] = asyncio.Queue(maxsize=QUEUE_MAX_SIZE)
 _sent_since_last_loop_by_guild: set[int] = set()
-ping_queue: asyncio.Queue[int] = asyncio.Queue()
+_sent_guilds_lock = threading.Lock()
+ping_queue: asyncio.Queue[int] = asyncio.Queue(maxsize=QUEUE_MAX_SIZE)
 
 _background_started = False
 
@@ -189,16 +191,26 @@ def _prune_cooldown_map(m: Dict[int, Dict[int, float]], max_age: float):
 
 
 def _save_nested_cooldowns(path: Path, m: Dict[int, Dict[int, float]]):
+    """Save cooldowns atomically using temp file + rename."""
     try:
-        with open(path, "w") as f:
+        # Prune before saving
+        _prune_cooldown_map(m, COOLDOWN_SECONDS)
+
+        # Write to temp file
+        temp_path = path.with_suffix('.tmp')
+        with open(temp_path, "w") as f:
             # json requires str keys; convert
             serial = {
                 str(g): {str(mid): ts for mid, ts in inner.items()}
                 for g, inner in m.items()
             }
             json.dump(serial, f)
+
+        # Atomic rename
+        temp_path.replace(path)
+
     except Exception as e:
-        log(f"[cooldowns] save error {path.name}: {e}")
+        logger.error(f"[cooldowns] save error {path.name}: {e}")
 
 
 def _load_nested_cooldowns(path: Path) -> Dict[int, Dict[int, float]]:
@@ -212,6 +224,22 @@ def _load_nested_cooldowns(path: Path) -> Dict[int, Dict[int, float]]:
         }
     except Exception:
         return {}
+
+
+def _persist_server_cooldowns():
+    """Immediately persist server cooldown state."""
+    try:
+        _save_nested_cooldowns(SERVER_CD_FILE, _server_message_cooldowns)
+    except Exception as e:
+        logger.error(f"[cooldown] Failed to persist server cooldowns: {e}")
+
+
+def _persist_user_cooldowns():
+    """Immediately persist user cooldown state."""
+    try:
+        _save_nested_cooldowns(USER_CD_FILE, _user_message_cooldowns)
+    except Exception as e:
+        logger.error(f"[cooldown] Failed to persist user cooldowns: {e}")
 
 
 _server_message_cooldowns: Dict[int, Dict[int, float]] = _load_nested_cooldowns(
@@ -482,19 +510,40 @@ async def help_cmd(interaction: discord.Interaction):
 async def on_app_command_error(interaction: discord.Interaction, error: Exception):
     from discord.app_commands import CommandOnCooldown
 
-    try:
-        if isinstance(error, CommandOnCooldown):
-            retry = int(error.retry_after)
-            msg = f"⏳ Slow down—try again in ~{retry}s."
+    # Handle cooldown errors specifically
+    if isinstance(error, CommandOnCooldown):
+        retry = int(error.retry_after)
+        msg = f"⏳ Slow down—try again in ~{retry}s."
+        try:
             if interaction.response.is_done():
                 await interaction.followup.send(msg, ephemeral=True)
             else:
                 await interaction.response.send_message(msg, ephemeral=True)
-            return
+        except discord.HTTPException as e:
+            # If we can't send the error message, log it but don't raise
+            logger.error(f"[slash] Failed to send cooldown message: {e}")
+        except Exception as e:
+            # Unexpected error sending message
+            logger.error(f"[slash] Unexpected error in cooldown handler: {e}", exc_info=True)
+        # Don't re-raise for cooldown errors - we handled it
+        return
+
+    # For other errors, log and let Discord show generic error
+    logger.error(
+        f"[slash] Command error: {type(error).__name__}: {error}",
+        exc_info=True
+    )
+
+    # Try to send user-friendly error message
+    try:
+        error_msg = "❌ An error occurred while processing your command."
+        if interaction.response.is_done():
+            await interaction.followup.send(error_msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(error_msg, ephemeral=True)
     except Exception:
+        # If we can't send error message, user will see Discord's generic error
         pass
-    # fall back to default behaviour
-    raise error
 
 
 # --- helper to DM all subscribers when gold.py emits a message ---
@@ -509,48 +558,56 @@ async def _dm_subscribers_broadcast(content: str, message_id: int):
     now = time.time()
 
     async def _send_one(uid: int):
-        allow, _prev, remaining = await _dm_should_send_and_update(uid, message_id, now)
-        if not allow:
-            # Optional: log(f"[DM] Skipping user {uid}; ~{remaining/3600:.2f}h remaining for msg {message_id}")
+        # Check if we SHOULD send (but don't update cooldown yet)
+        if DEBUG_MODE_DMS and DEBUG_USER_ID and uid != DEBUG_USER_ID:
+            logger.debug(f"[DM] Skipping user {uid} (DEBUG_MODE_DMS active)")
             return
+
+        d = _user_message_cooldowns.get(uid)
+        if d is None:
+            d = {}
+            _user_message_cooldowns[uid] = d
+
+        prev = d.get(message_id)
+        if prev is not None and (now - prev) < COOLDOWN_SECONDS:
+            remaining = COOLDOWN_SECONDS - (now - prev)
+            logger.debug(f"[DM] Skipping user {uid}; ~{remaining/3600:.2f}h remaining for msg {message_id}")
+            return
+
+        # Try to send
         try:
             user = await client.fetch_user(uid)
             await user.send(content, allowed_mentions=allowed_mentions)
-        except Exception as e:
-            # If user can’t be DMed, optionally prune them
+
+            # SUCCESS: Update cooldown only after successful send
+            d[message_id] = now
+            _persist_user_cooldowns()
+            logger.debug(f"[DM] Sent to user {uid}")
+
+        except discord.NotFound:
+            # User no longer exists - remove subscription
+            logger.info(f"[DM] User {uid} not found (deleted account?), unsubscribing")
+            _dm_subscribers.discard(uid)
+            _save_subs(_dm_subscribers)
+        except discord.Forbidden as e:
+            # User has DMs disabled or blocked bot
             if "Cannot send messages to this user" in str(e):
+                logger.info(f"[DM] Cannot message user {uid}, unsubscribing")
                 _dm_subscribers.discard(uid)
                 _save_subs(_dm_subscribers)
+            else:
+                logger.warning(f"[DM] Forbidden error for user {uid}: {e}")
+        except discord.HTTPException as e:
+            # Rate limit or other API error - keep subscription, log error
+            logger.error(f"[DM] HTTP error sending to user {uid}: {e}")
+        except Exception as e:
+            # Unexpected error - log but keep subscription
+            logger.error(f"[DM] Unexpected error sending to user {uid}: {e}", exc_info=True)
 
     await asyncio.gather(
         *[asyncio.create_task(_send_one(uid)) for uid in targets],
         return_exceptions=True,
     )
-
-
-async def _dm_should_send_and_update(user_id: int, message_id: int, now: float):
-    """
-    Decide if we should DM this user for this specific message.
-    Returns (allow: bool, prev_ts: Optional[float], remaining_seconds: Optional[float]).
-    """
-    # DM debug gate (optional)
-    if DEBUG_MODE_DMS and DEBUG_USER_ID and user_id != DEBUG_USER_ID:
-        log(
-            f"[DEBUG DM] Skipping DM to user {user_id}; only sending to {DEBUG_USER_ID}."
-        )
-        return False, None, None  # keep the return shape consistent
-
-    d = _user_message_cooldowns.get(user_id)
-    if d is None:
-        d = {}
-        _user_message_cooldowns[user_id] = d
-
-    prev = d.get(message_id)
-    if prev is None or (now - prev) >= COOLDOWN_SECONDS:
-        d[message_id] = now
-        return True, prev, None
-
-    return False, prev, COOLDOWN_SECONDS - (now - prev)
 
 
 # ---------- Channel / Role helpers ----------
@@ -560,23 +617,43 @@ def _resolve_sendable_channel(guild: discord.Guild) -> Optional[discord.TextChan
     name = _get_effective_channel_name(guild.id).lower()
     cid = _get_effective_channel_id(guild.id)
 
-    me = getattr(guild, "me", None) or guild.get_member(getattr(client.user, "id", 0))
+    # Get bot member with proper null check
+    if not client.user:
+        logger.error("[_resolve_sendable_channel] Bot user not initialized")
+        return None
+
+    me = guild.me  # guild.me is the bot's Member object (safer than get_member)
+    if not me:
+        logger.error(f"[{guild.name}] Bot not found in guild member list")
+        return None
 
     # 1) Try explicit ID
     if cid:
         ch = guild.get_channel(cid)
         if isinstance(ch, discord.TextChannel):
-            perms = ch.permissions_for(me or guild.default_role)
+            perms = ch.permissions_for(me)
             if perms.view_channel and perms.send_messages:
                 return ch
+            else:
+                logger.warning(
+                    f"[{guild.name}] Channel <#{cid}> exists but lacks permissions "
+                    f"(view: {perms.view_channel}, send: {perms.send_messages})"
+                )
 
     # 2) Fallback to name match
     for ch in sorted(guild.text_channels, key=lambda c: (c.position, c.id)):
         if ch.name.lower() == name:
-            perms = ch.permissions_for(me or guild.default_role)
+            perms = ch.permissions_for(me)
             if perms.view_channel and perms.send_messages:
                 return ch
+            else:
+                logger.debug(
+                    f"[{guild.name}] Channel #{ch.name} matches but lacks permissions"
+                )
 
+    logger.warning(
+        f"[{guild.name}] No sendable channel found (looking for '#{name}' or ID {cid})"
+    )
     return None
 
 
@@ -610,6 +687,7 @@ async def _should_send_and_update(guild_id: int, message_id: int, now: float):
 
     if prev_timestamp is None or now - prev_timestamp >= COOLDOWN_SECONDS:
         _server_message_cooldowns[guild_id][message_id] = now
+        _persist_server_cooldowns()
         return True, prev_timestamp, None
     else:
         remaining_time = COOLDOWN_SECONDS - (now - prev_timestamp)
@@ -678,14 +756,18 @@ async def _send_to_guild(guild: discord.Guild, content: str, message_id: int) ->
 
 async def _ping_loop():
     while True:
-        gid = await ping_queue.get()  # one guild ID per item
+        gid = await ping_queue.get()
         try:
             g = client.get_guild(gid)
             if not g:
+                logger.warning(f"[ping_loop] Guild {gid} not found, skipping ping")
                 continue
+
             ch = _resolve_sendable_channel(g)
             if not ch:
+                logger.warning(f"[ping_loop] No sendable channel in {g.name}")
                 continue
+
             role = _find_role_by_name(g)
             if role:
                 await ch.send(
@@ -694,12 +776,19 @@ async def _ping_loop():
                         roles=True, users=False, everyone=False
                     ),
                 )
-                log(f"[{g}] Ping sent")
+                logger.info(f"[{g.name}] Ping sent to role {role.name}")
             else:
                 await ch.send(
                     "Scan complete. New results above.",
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
+                logger.info(f"[{g.name}] Scan complete message sent (no role)")
+        except discord.Forbidden as e:
+            logger.error(f"[ping_loop] Permission denied for guild {gid}: {e}")
+        except discord.HTTPException as e:
+            logger.error(f"[ping_loop] HTTP error for guild {gid}: {e}")
+        except Exception as e:
+            logger.error(f"[ping_loop] Unexpected error for guild {gid}: {e}", exc_info=True)
         finally:
             ping_queue.task_done()
 
@@ -727,7 +816,8 @@ async def _dispatcher_loop():
                 if (r is True) and not isinstance(r, Exception)
             }
             if sent_guild_ids:
-                _sent_since_last_loop_by_guild.update(sent_guild_ids)
+                with _sent_guilds_lock:
+                    _sent_since_last_loop_by_guild.update(sent_guild_ids)
         finally:
             queue.task_done()
 
@@ -736,12 +826,20 @@ def _loop_done_handler():
     # Called by gold.py at the end of its cycle.
     # Drain the set of guilds that actually sent, and enqueue a ping for each.
     def _drain_and_emit():
-        to_ping = list(_sent_since_last_loop_by_guild)
-        _sent_since_last_loop_by_guild.clear()
+        with _sent_guilds_lock:
+            to_ping = list(_sent_since_last_loop_by_guild)
+            _sent_since_last_loop_by_guild.clear()
+
         for gid in to_ping:
-            ping_queue.put_nowait(gid)
-        if not to_ping:
-            log("Loop done: no guild deliveries this cycle; suppressing all pings.")
+            try:
+                ping_queue.put_nowait(gid)
+            except asyncio.QueueFull:
+                logger.error(f"[ping] Queue full, cannot enqueue guild {gid}")
+
+        if to_ping:
+            logger.info(f"[ping] Queued pings for {len(to_ping)} guilds")
+        else:
+            logger.debug("Loop done: no guild deliveries this cycle; suppressing all pings.")
 
     # Run on the bot's loop thread
     client.loop.call_soon_threadsafe(_drain_and_emit)
@@ -776,10 +874,18 @@ async def on_ready():
     try:
         # Wire gold.py -> async queues (thread-safe)
         if hasattr(gold, "set_emitter"):
-            gold.set_emitter(
-                lambda m: client.loop.call_soon_threadsafe(queue.put_nowait, m)
-            )
-            log("Emitter registered via gold.set_emitter(...)")
+            def safe_emit(m: str):
+                """Emit with backpressure handling."""
+                try:
+                    client.loop.call_soon_threadsafe(queue.put_nowait, m)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        f"[queue] Message queue full ({QUEUE_MAX_SIZE} items), "
+                        "dropping message. Discord may be down or rate-limited."
+                    )
+
+            gold.set_emitter(safe_emit)
+            logger.info(f"Emitter registered (queue max size: {QUEUE_MAX_SIZE})")
 
         client.loop.create_task(_ping_loop())
         if hasattr(gold, "set_loop_done_emitter"):
@@ -798,11 +904,12 @@ async def on_ready():
                 log("Emitter installed by monkey-patching gold.send_to_discord(...)")
 
         async def _cooldown_snapshot_loop():
+            """Background loop to periodically persist cooldowns (belt-and-suspenders)."""
             while True:
-                _prune_cooldown_map(_server_message_cooldowns, COOLDOWN_SECONDS)
-                _prune_cooldown_map(_user_message_cooldowns, COOLDOWN_SECONDS)
-                _save_nested_cooldowns(SERVER_CD_FILE, _server_message_cooldowns)
-                _save_nested_cooldowns(USER_CD_FILE, _user_message_cooldowns)
+                # Cooldowns are now persisted immediately after updates,
+                # but this provides an extra safety net for any edge cases
+                _persist_server_cooldowns()
+                _persist_user_cooldowns()
                 await asyncio.sleep(60)
 
         try:
