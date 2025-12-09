@@ -394,6 +394,7 @@ def main():
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=6&pi16=99&pi1=0&pi17=0&pa2%5B%5D=26"
     )
+    '''
     url3 = (
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=3&pi16=2&pa2%5B%5D=26"
@@ -424,3 +425,4 @@ if __name__ == "__main__":
         handlers=[logging.StreamHandler(sys.stdout)],
     )
     main()
+    '''
