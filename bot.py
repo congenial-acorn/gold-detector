@@ -930,11 +930,9 @@ async def on_ready():
                     if hasattr(gold, "main") and callable(getattr(gold, "main")):
                         logger.info("Starting gold.py main loop")
                         gold.main()
-                        # If main() returns normally (shouldn't happen), reset backoff
-                        backoff = base
-                        consecutive_failures = 0
-                        logger.warning(
-                            "gold.py main() returned unexpectedly, restarting immediately"
+                        # gold.main() should never return; treat as failure to avoid tight restart loop
+                        raise RuntimeError(
+                            "gold.py main() returned unexpectedly (no exception raised)"
                         )
                     else:
                         logger.error(
