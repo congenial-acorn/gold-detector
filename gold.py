@@ -413,7 +413,7 @@ def main():
     )
     '''
     # monitor Gold (add "Silver" if needed)
-    monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold"])
+    monitor_metals([url1, url2], metals=["Gold"])
     
 
 if __name__ == "__main__":
