@@ -1,10 +1,3 @@
-## STATUS
-Version 1.2.4 has been deployed. Last updated: 11/18, 7:49 PM UTC.
-
-Releases will now be created for each version. Always download source code from releases!
-
-Scroll down for bot info.
-
 # Gold Detector Discord Bot
 ## An Elite: Dangerous 3rd party tool
 Bot invite link (also please read Bot Setup section): https://discord.com/oauth2/authorize?client_id=1415805825364267151
