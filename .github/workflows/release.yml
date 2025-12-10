@@ -43,7 +43,7 @@ jobs:
                 next
               }
             }
-            found { print }
+            found && !/^## \[/ { print }
           ' CHANGELOG.md)
 
           if [ -z "$NOTES" ]; then
