@@ -1,3 +1,7 @@
+## [1.2.6] - 2025-12-10
+### Added
+- **Added Palladium monitoring.** The bot now monitors both Gold and Palladium markets.
+
 ## [1.2.5] - 2025-12-08
 ### Fixed
 - **Prevented tight restart loop when gold.py exits.** `bot.py` now treats an unexpected return from `gold.main()` as a failure that follows the existing backoff instead of instant restarts.
