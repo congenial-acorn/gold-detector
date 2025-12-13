@@ -413,8 +413,8 @@ def main():
     )
     '''
     # monitor Gold (add "Silver" if needed)
-    monitor_metals([url1, url2], metals=["Gold"])
-    
+    monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold", "Palladium"])
+
 
 if __name__ == "__main__":
     # Configure logging if running standalone (not imported by bot.py)
