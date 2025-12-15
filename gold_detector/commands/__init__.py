@@ -1,0 +1,2 @@
+"""Slash command registration helpers."""
+
