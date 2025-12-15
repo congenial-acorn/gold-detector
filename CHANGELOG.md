@@ -1,3 +1,15 @@
+## [1.3.0] - 2025-12-14
+### Added
+- Modularized bot into services (`config`, `services`, `messaging`, `gold_runner`, command modules) for cleaner composition and future testing.
+- Added centralized JSON-backed state stores with locks for guild prefs, opt-outs, subscribers, and cooldowns.
+
+### Changed
+- `bot.py` is now a thin wiring layer that builds settings/logging, registers commands, and starts background tasks.
+- Dispatcher/ping/DM logic now lives in `DiscordMessenger` with explicit queues and cooldown snapshotting.
+
+### Fixed
+- Server-only slash commands are now gated to guild installs (`allowed_installs(guilds=True, users=False)`) so they do not appear for user installs in other servers.
+
 ## [1.2.6] - 2025-12-10
 ### Added
 - **Added Palladium monitoring.** The bot now monitors both Gold and Palladium markets.
