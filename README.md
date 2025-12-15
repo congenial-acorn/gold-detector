@@ -35,7 +35,7 @@ Alerts are sent by default. To disable alerts, use `/server_alerts_off`. To enab
 
 `/help`: Get a link to this page.
 
-The following commands require Manage Guild permission.
+The following commands require Manage Guild permission and are for servers only.
 
 `/server_alerts_off`: Server command to disable alerts.
 
