@@ -1,3 +1,7 @@
+## [1.3.1]
+### Fixed
+- Fixed issue where servers would recieve pings despite not recieving any alerts.
+
 ## [1.3.0] - 2025-12-14
 ### Added
 - Modularized bot into services (`config`, `services`, `messaging`, `gold_runner`, command modules) for cleaner composition and future testing.
