@@ -57,6 +57,7 @@ class GuildPreferencesService:
                     "channel_name": sanitize_channel_name(vals.get("channel_name")),
                     "role_id": vals.get("role_id"),
                     "role_name": sanitize_role_name(vals.get("role_name")),
+                    "pings_enabled": bool(vals.get("pings_enabled", True)),
                 }
         except Exception:
             return {}
@@ -69,6 +70,7 @@ class GuildPreferencesService:
                 "channel_name": vals.get("channel_name"),
                 "role_id": vals.get("role_id"),
                 "role_name": vals.get("role_name"),
+                "pings_enabled": vals.get("pings_enabled", True),
             }
             for gid, vals in self._prefs.items()
         }
@@ -106,6 +108,13 @@ class GuildPreferencesService:
             self._prefs[guild_id] = prefs
             self._persist_locked()
 
+    def set_pings_enabled(self, guild_id: int, enabled: bool) -> None:
+        with self._lock:
+            prefs = self._prefs.get(guild_id, {})
+            prefs["pings_enabled"] = bool(enabled)
+            self._prefs[guild_id] = prefs
+            self._persist_locked()
+
     def effective_channel_name(self, guild_id: int) -> str:
         prefs = self._prefs.get(guild_id) or {}
         raw = prefs.get("channel_name") or self.channel_override or self.default_channel
@@ -129,6 +138,13 @@ class GuildPreferencesService:
         if isinstance(rid, (int, str)) and str(rid).isdigit():
             return int(rid)
         return None
+
+    def pings_enabled(self, guild_id: int) -> bool:
+        prefs = self._prefs.get(guild_id) or {}
+        enabled = prefs.get("pings_enabled")
+        if enabled is None:
+            return True
+        return bool(enabled)
 
     def source_labels(self, guild_id: int) -> Tuple[str, str]:
         prefs = self._prefs.get(guild_id) or {}

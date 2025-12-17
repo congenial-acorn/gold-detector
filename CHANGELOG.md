@@ -1,3 +1,7 @@
+## [1.4.0]
+### Added
+- Added `/server_ping_off` and `/server_ping_on` commands so servers can suppress @role pings without disabling alert messages entirely.
+
 ## [1.3.1]
 ### Fixed
 - Fixed issue where servers would recieve pings despite not recieving any alerts.

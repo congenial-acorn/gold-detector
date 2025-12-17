@@ -116,6 +116,42 @@ def register_server_settings_commands(
             "Ping role cleared. Using default: @Market Alert.", ephemeral=True
         )
 
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.allowed_installs(guilds=True, users=False)
+    @tree.command(
+        name="server_ping_off",
+        description="Disable @role pings while keeping alerts enabled",
+    )
+    async def server_ping_off(interaction: discord.Interaction):
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                "Run this in a server.", ephemeral=True
+            )
+        guild_prefs.set_pings_enabled(interaction.guild.id, False)
+        await interaction.response.send_message(
+            "Pings disabled. Alerts will continue without @role mentions.",
+            ephemeral=True,
+        )
+
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.allowed_installs(guilds=True, users=False)
+    @tree.command(
+        name="server_ping_on",
+        description="Re-enable @role pings in addition to alerts",
+    )
+    async def server_ping_on(interaction: discord.Interaction):
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                "Run this in a server.", ephemeral=True
+            )
+        guild_prefs.set_pings_enabled(interaction.guild.id, True)
+        await interaction.response.send_message(
+            "Pings enabled. Alerts will include @role mentions again.",
+            ephemeral=True,
+        )
+
     @tree.command(
         name="show_alert_settings",
         description="Show this server's current alert channel/role (with defaults)",
@@ -132,9 +168,14 @@ def register_server_settings_commands(
         cid = guild_prefs.effective_channel_id(gid)
         rid = guild_prefs.effective_role_id(gid)
         channel_src, role_src = guild_prefs.source_labels(gid)
+        ping_status = "enabled" if guild_prefs.pings_enabled(gid) else "disabled"
         where = f"<#{cid}>" if cid else f"#{ch_name}"
         who = f"<@&{rid}>" if rid else f"@{role_name}"
         await interaction.response.send_message(
-            f"Alert channel: {where} ({channel_src})\nPing role: {who} ({role_src})",
+            (
+                "Alert channel: "
+                f"{where} ({channel_src})\nPing role: {who} ({role_src})"
+                f"\nPings: {ping_status}"
+            ),
             ephemeral=True,
         )
