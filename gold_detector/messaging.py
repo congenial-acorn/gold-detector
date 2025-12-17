@@ -70,7 +70,11 @@ class DiscordMessenger:
         self.client.loop.call_soon_threadsafe(_put)
 
     def loop_done_from_thread(self) -> None:
-        self.client.loop.call_soon_threadsafe(self._drain_and_emit_pings)
+        asyncio.run_coroutine_threadsafe(self._drain_after_queue(), self.client.loop)
+
+    async def _drain_after_queue(self) -> None:
+        await self.queue.join()
+        self._drain_and_emit_pings()
 
     async def start_background_tasks(self) -> None:
         asyncio.create_task(self._dispatcher_loop())
