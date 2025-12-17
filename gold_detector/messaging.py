@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from typing import Iterable, Optional, Set
+from collections import defaultdict
+from typing import DefaultDict, Optional, Set, Tuple
 
 import discord
 from discord import AllowedMentions
@@ -39,19 +40,27 @@ class DiscordMessenger:
         self.subscribers = subscribers
         self.logger = logger or logging.getLogger("bot.messaging")
 
-        self.queue: asyncio.Queue[str] = asyncio.Queue(maxsize=settings.queue_max_size)
+        # Message queue items are tagged with the gold.py cycle number so pings
+        # only fire for guilds that actually received a message in that cycle.
+        self.queue: asyncio.Queue[Tuple[int, str]] = asyncio.Queue(
+            maxsize=settings.queue_max_size
+        )
         self.ping_queue: asyncio.Queue[int] = asyncio.Queue(
             maxsize=settings.queue_max_size
         )
-        self._sent_since_last_loop: Set[int] = set()
-        self._sent_lock = threading.Lock()
+        self._cycle_lock = threading.Lock()
+        self._cycle_id: int = 0
+        self._delivered_by_cycle: DefaultDict[int, Set[int]] = defaultdict(set)
 
     def enqueue_from_thread(self, content: str) -> None:
         """Schedule a message into the dispatcher queue from any thread."""
 
         def _put():
+            with self._cycle_lock:
+                cycle = self._cycle_id
+
             try:
-                self.queue.put_nowait(content)
+                self.queue.put_nowait((cycle, content))
             except asyncio.QueueFull:
                 self.logger.warning(
                     "[queue] Message queue full (%s items), dropping message",
@@ -70,7 +79,7 @@ class DiscordMessenger:
     async def _dispatcher_loop(self) -> None:
         await self.client.wait_until_ready()
         while True:
-            msg = await self.queue.get()
+            cycle_id, msg = await self.queue.get()
             message_id = message_key(msg)
             try:
                 guilds = list(self.client.guilds)
@@ -91,15 +100,17 @@ class DiscordMessenger:
                     if (r is True) and not isinstance(r, Exception)
                 }
                 if sent_guild_ids:
-                    with self._sent_lock:
-                        self._sent_since_last_loop.update(sent_guild_ids)
+                    with self._cycle_lock:
+                        self._delivered_by_cycle[cycle_id].update(sent_guild_ids)
             finally:
                 self.queue.task_done()
 
     def _drain_and_emit_pings(self) -> None:
-        with self._sent_lock:
-            to_ping = list(self._sent_since_last_loop)
-            self._sent_since_last_loop.clear()
+        with self._cycle_lock:
+            current_cycle = self._cycle_id
+            to_ping = list(self._delivered_by_cycle.pop(current_cycle, set()))
+            # Advance cycle so any deliveries after loop_done are counted for the next cycle.
+            self._cycle_id += 1
 
         for gid in to_ping:
             try:
