@@ -117,6 +117,9 @@ class DiscordMessenger:
             self._cycle_id += 1
 
         for gid in to_ping:
+            if not self.guild_prefs.pings_enabled(gid):
+                self.logger.debug("[ping] Skipping guild %s (pings disabled)", gid)
+                continue
             try:
                 self.ping_queue.put_nowait(gid)
             except asyncio.QueueFull:
