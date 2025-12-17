@@ -26,6 +26,8 @@ If you don't do this, the bot will send to `#market-watch` and ping `@Market Ale
 
 Alerts are sent by default. To disable alerts, use `/server_alerts_off`. To enable, use `/server_alerts_on`
 
+Need to quiet ping mentions but keep the alerts flowing? Use `/server_ping_off` to suppress pings and `/server_ping_on` to turn them back on later.
+
 ## Commands
 `/alerts_on`: Command to subscribe to DM alerts.
 
@@ -48,6 +50,10 @@ The following commands require Manage Guild permission and are for servers only.
 `/set_alert_role`: Server command to set a custom role to ping. If not set, defaults to @Market Alert.
 
 `/clear_alert_role`: Server command to revert to pinging the default role (@Market Alert).
+
+`/server_ping_off`: Server command to stop sending @role pings while keeping alerts enabled.
+
+`/server_ping_on`: Server command to resume @role pings.
 
 `/show_alert_settings`: See the server's configuration.
 
