@@ -18,12 +18,17 @@ def register_alert_commands(
         try:
             user_id = interaction.user.id
             subscribers.add(user_id)
+            dm_sent = True
             try:
                 await interaction.user.send("Subscribed. I will DM you future alerts.")
             except Exception:
-                pass
+                dm_sent = False
             await interaction.response.send_message(
-                "You are subscribed to DMs. (If you did not get a DM, check your privacy settings.)",
+                (
+                    "You are subscribed to DMs."
+                    if dm_sent
+                    else "You are subscribed, but I could not DM you. Check your Message Requests."
+                ),
                 ephemeral=True,
             )
         except Exception as exc:  # noqa: BLE001
