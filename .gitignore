@@ -234,3 +234,4 @@ __marimo__/
 /.idea/inspectionProfiles/Project_Default.xml
 /.idea/vcs.xml
 .idea/deployment.xml
+*log.txt

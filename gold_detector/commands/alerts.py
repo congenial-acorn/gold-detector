@@ -9,6 +9,9 @@ from ..services import SubscriberService
 def register_alert_commands(
     tree: app_commands.CommandTree, subscribers: SubscriberService, help_url: str
 ) -> None:
+
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @tree.command(name="alerts_on", description="DM me future alerts")
     @app_commands.checks.cooldown(1, 5)
     async def alerts_on(interaction: discord.Interaction):
@@ -28,6 +31,8 @@ def register_alert_commands(
                 f"Could not subscribe: {exc}", ephemeral=True
             )
 
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @tree.command(name="alerts_off", description="Stop DMs")
     @app_commands.checks.cooldown(1, 5)
     async def alerts_off(interaction: discord.Interaction):
@@ -41,9 +46,10 @@ def register_alert_commands(
                 f"Could not unsubscribe: {exc}", ephemeral=True
             )
 
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @tree.command(name="help", description="Show help and commands for this bot")
     async def help_cmd(interaction: discord.Interaction):
         await interaction.response.send_message(
             f"Gold Detector commands and docs: <{help_url}>", ephemeral=True
         )
-
