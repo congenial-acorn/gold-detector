@@ -16,7 +16,9 @@ Note: You may read about other effects of BGS on markets here https://cdb.sotl.o
 ## Bot Setup (users)
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select "Add to my apps".
 
-IMPORTANT! Opt into messages using `/alerts_on`. To turn alerts off, use `/alerts_off`.
+IMPORTANT! Go to any channel and type `/alerts_on`. 
+
+Or, click the 4-shapes icon on the right of any message input. Select the Market Finder app (gold bars profile picture, you may have to search for "Market Finder") and opt into messages using `/alerts_on`. To turn alerts off, use `/alerts_off`.
 
 ## Bot Setup (servers)
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select a server.

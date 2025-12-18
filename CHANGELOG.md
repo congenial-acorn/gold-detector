@@ -1,3 +1,9 @@
+## [1.4.1] - 2025-12-18
+### Fixed
+- Ensured some slash commands (`/alerts_on`, `/alerts_off`, `/help`, `/ping`) are available in both guilds and DMs by explicitly allowing user installs and DM/private-channel contexts, while keeping guild-only commands gated to servers.
+- `/alerts_on` now tells users when the confirmation DM could not be delivered so they can check Message Requests or server DM privacy settings.
+- `/show_alert_settings` is now only visible in servers as intended. 
+
 ## [1.4.0]
 ### Added
 - Added `/server_ping_off` and `/server_ping_on` commands so servers can suppress @role pings without disabling alert messages entirely.
