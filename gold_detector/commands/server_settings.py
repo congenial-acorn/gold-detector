@@ -156,6 +156,7 @@ def register_server_settings_commands(
         name="show_alert_settings",
         description="Show this server's current alert channel/role (with defaults)",
     )
+    @app_commands.guild_only()
     @app_commands.allowed_installs(guilds=True, users=False)
     async def show_alert_settings(interaction: discord.Interaction):
         if not interaction.guild:
