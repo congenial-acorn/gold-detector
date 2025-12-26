@@ -72,7 +72,7 @@ These commands are for setting your preferences. Server preferences require Mana
 
 `/set_preferences show`: Display current preferences for you or the server.
 
-`/set_preferences remove`: Remove specific options from a category.
+`/set_preferences remove`: Remove specific options from a category. Use `/set_preferences show` to see your current settings and type them exactly as displayed to remove.
 
 `/set_preferences clear`: Clear one category or all preferences.
 
