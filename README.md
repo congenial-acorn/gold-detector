@@ -84,4 +84,7 @@ Once you get a message, just go to the station in your hauling ship (and your ca
 Note: when you get to the station, you will see the stock is 10% of what the bot reports. The stock will actually refill over time until all of the stock it originally had is gone so do not worry.
 
 ### Legal
-The source code is released under CC0. Neither the bot nor the developer is associated with Frontier Developments, Elite Dangerous, Inara.cz, or any other member or tool of the Elite Dangerous community.
+
+The source code is now under the MIT license since v1.5.0 (previously under CC0). 
+
+Neither the bot nor the developer is associated with Frontier Developments, Elite Dangerous, Inara.cz, or any other member or tool of the Elite Dangerous community.
