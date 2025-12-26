@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import gold
+import gold_detector.monitor as monitor
 
 
 class StopMonitoring(Exception):
@@ -53,22 +53,22 @@ def test_monitor_metals_respects_cooldown(monkeypatch):
     class FakeResponse:
         text = HTML_TEMPLATE
 
-    monkeypatch.setattr(gold, "send_to_discord", fake_send)
-    monkeypatch.setattr(gold, "http_get", lambda url: FakeResponse())
+    monkeypatch.setattr(monitor, "send_to_discord", fake_send)
+    monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
     monkeypatch.setattr(
-        gold,
+        monitor,
         "get_station_market_urls",
         lambda near_urls: ["https://inara.cz/elite/station-market/123/"],
     )
-    monkeypatch.setattr(gold, "get_station_type", lambda station_id: "Outpost")
-    monkeypatch.setattr(gold.datetime, "datetime", _FixedDateTime)
+    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
+    monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
 
     def fake_sleep(seconds):
         raise StopMonitoring
 
-    monkeypatch.setattr(gold.time, "sleep", fake_sleep)
+    monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
 
     with pytest.raises(StopMonitoring):
-        gold.monitor_metals(["dummy"], ["Gold", "Gold"], cooldown_hours=1)
+        monitor.monitor_metals(["dummy"], ["Gold", "Gold"], cooldown_hours=1)
 
     assert len(calls) == 1

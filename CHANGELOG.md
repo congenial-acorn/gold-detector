@@ -1,8 +1,19 @@
+## [1.5.0] - 2026-12-25
+### Added
+- New `/set_preferences` slash command group lets users and servers filter alerts by station type, commodity (Gold/Palladium), and preferred Powerplay leaders; filters apply to both server posts and DMs.
+- Powerplay awareness: when a monitored system is Fortified or Stronghold, the bot posts merit guidance with masked Inara commodity links and skips unoccupied systems.
+- Hardened HTTP client now rate-limits all outbound requests, handles 429 backoff, and surfaces IP block errors for easier debugging.
+
+### Changed
+- Reduced Discord spam by aggregating hidden-market alerts per system (single system heading with multiple stations/metals) instead of repeating "Hidden market detected" for each station.
+- Ping cycle is now tied to the scan cycle so servers only get pings when they actually received alerts in that pass.
+
 ## [1.4.1] - 2025-12-18
 ### Fixed
 - Ensured some slash commands (`/alerts_on`, `/alerts_off`, `/help`, `/ping`) are available in both guilds and DMs by explicitly allowing user installs and DM/private-channel contexts, while keeping guild-only commands gated to servers.
 - `/alerts_on` now tells users when the confirmation DM could not be delivered so they can check Message Requests or server DM privacy settings.
 - `/show_alert_settings` is now only visible in servers as intended. 
+
 
 ## [1.4.0]
 ### Added
