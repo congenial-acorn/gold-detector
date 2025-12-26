@@ -8,6 +8,7 @@ import requests
 import functools
 import logging
 import sys
+from urllib.parse import quote_plus
 from typing import Optional, cast
 from bs4 import BeautifulSoup, Tag, NavigableString, PageElement
 
@@ -248,6 +249,120 @@ def get_station_type(station_id: str) -> str:
     return f"{base} ({paren.group(1)})" if paren else base
 
 
+PALLADIUM_NUM = 45
+GOLD_NUM = 42
+
+
+def assemble_commodity_links(ids, system_name, distance):
+    """Build an Inara commodities URL inserting each ID as pa1%5B%5D=ID after pi1=2&."""
+    encoded_system = quote_plus(system_name or "")
+    base = "https://inara.cz/elite/commodities/?formbrief=1&pi1=2"
+    commodity_bits = "&".join(f"pa1%5B%5D={int(cid)}" for cid in ids)
+    tail = (
+        f"&ps1={encoded_system}"
+        f"&pi10=3&pi11={distance}"
+        "&pi3=1&pi9=0&pi4=0&pi8=0&pi13=0&pi5=720&pi12=0&pi7=0&pi14=0&ps3="
+    )
+    return f"{base}&{commodity_bits}{tail}" if commodity_bits else f"{base}{tail}"
+
+def get_powerplay_status(systems):
+    """Check each system in the list for Powerplay status."""
+    for system in systems:
+        system_url = system[0]
+        try:
+            resp = http_get(system_url)
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            system_name = None
+            h2 = soup.find("h2")
+            if h2:
+                raw_name = h2.get_text(" ", strip=True)
+                # Drop any decorative glyphs (e.g., private-use icons) trailing the name.
+                system_name = re.sub(r"[\uE000-\uF8FF]", "", raw_name).strip()
+
+            # Anchor on the "Powerplay" label, then walk its parent div to pull fields
+            label = soup.find("span", string=re.compile(r"Powerplay", re.IGNORECASE))
+            if not label:
+                logger.info(f"No Powerplay section found for {system_name or system_url}")
+                continue
+
+            block = label.find_parent("div")
+            if block is None:
+                logger.info(f"Powerplay section malformed for {system_name or system_url}")
+                continue
+
+            power_link = block.find("a", href=re.compile(r"/elite/power/\d+/?"))
+            power_name = power_link.get_text(strip=True) if power_link else None
+
+            role_tag = block.find("small")
+            role_text = (
+                role_tag.get_text(" ", strip=True).strip("()") if role_tag else None
+            )
+
+            status_tag = block.find(
+                "span",
+                class_=lambda c: c and "bigger" in c.split(),
+            )
+            status_text = status_tag.get_text(" ", strip=True) if status_tag else None
+
+            percent_text = None
+            neg_tag = block.find("span", class_="negative")
+            if neg_tag:
+                raw = neg_tag.get_text(" ", strip=True)
+                m_pct = re.search(r"(\d+(?:[.,]\d+)?)%", raw)
+                percent_text = f"{m_pct.group(1)}%" if m_pct else (raw or None)
+
+            parts = []
+            if power_name:
+                parts.append(f"power={power_name}")
+            if role_text:
+                parts.append(f"role={role_text}")
+            if status_text:
+                parts.append(f"status={status_text}")
+            if percent_text:
+                parts.append(f"progress={percent_text}")
+
+            if not parts:
+                logger.info(
+                    f"Powerplay section present but empty for {system_name or system_url}"
+                )
+                continue
+
+            msg = f"Powerplay info for {system_name or system_url}: " + "; ".join(parts)
+            logger.info(msg)
+            
+            id_list = []
+            for i in range(len(system)):
+                if system[i] == "Gold":
+                    id_list.append(GOLD_NUM)
+                elif system[i] == "Palladium":
+                    id_list.append(PALLADIUM_NUM)
+                else:
+                    continue
+            
+            if status_text == "Unoccupied":
+                logger.debug(
+                    f"Powerplay status is Unoccupied for {system_name or system_url}"
+                )
+                continue
+            if status_text == "Fortified":
+                commodity_url = assemble_commodity_links(id_list, system_name or "", 20)
+                send_to_discord(
+                    f"{system_name} is a {power_name} {status_text} system.\n"
+                    f"You can earn merits by selling for large profit in (these systems)[{commodity_url}]."
+                )
+            elif status_text == "Stronghold":
+                commodity_url = assemble_commodity_links(id_list, system_name or "", 30)
+                send_to_discord(
+                    f"{system_name} is a {power_name} {status_text} system.\n"
+                    f"You can earn merits by selling for large profit in (these systems)[{commodity_url}]."
+                )
+            send_to_discord(msg)
+        except Exception as e:
+            logger.error(f"Failed to fetch Powerplay status from {system_url}: {e}", exc_info=True)
+            continue
+
+
 # ---- MAIN LOOP --------------------------------------------------------------
 
 
@@ -255,6 +370,8 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
     # key = f"{station_id}-{metal_name}"
     last_ping = {}  # key -> datetime of last ping
     cooldown = datetime.timedelta(hours=cooldown_hours)
+    systems = []
+    messages = []
 
     logger.info(
         f"Starting monitor loop: checking {len(metals)} metals with {cooldown_hours}h cooldown"
@@ -337,6 +454,15 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                             st_type = get_station_type(station_id)
                             key = f"{station_id}-{metal}"
                             last_time = last_ping.get(key)
+                            existing = None
+                            for entry in systems:
+                                if entry and entry[0] == system_address:
+                                    existing = entry
+                                    break
+                            if existing is None:
+                                systems.append([system_address, metal])
+                            elif metal not in existing[1:]:
+                                existing.append(metal)
                             if not last_time or (now - last_time) > cooldown:
                                 # build and send the message
                                 msg = (
@@ -344,13 +470,20 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                                     f"System: {system_name}, <{system_address}>\n"
                                     f"{metal} stock: {stock}"
                                 )
-                                send_to_discord(msg)
+                                for message in messages:
+                                    if st_name in message:
+                                        message += f", {metal} stock: {stock}"
+                                        break
+                                else:
+                                    messages.append(msg)
+                                #send_to_discord(msg)
                                 last_ping[key] = now
                                 alerts_sent += 1
                                 logger.info(
                                     f"ALERT: {metal} @ {st_name} - price={buy_price}, stock={stock}, "
                                     f"cooldown until {now + cooldown}"
                                 )
+                            
                             else:
                                 remaining = cooldown - (now - last_time)
                                 logger.debug(
@@ -360,10 +493,15 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                 except Exception as e:
                     logger.error(f"Error processing station {url}: {e}", exc_info=True)
                     continue
-
+            
             logger.info(
                 f"Scan complete: checked {stations_checked} stations, sent {alerts_sent} alerts"
             )
+            logger.info("Starting Powerplay check.")
+            for message in messages:
+                send_to_discord(message)
+            
+            get_powerplay_status(systems)
 
             if _emit_loop_done:
                 try:
