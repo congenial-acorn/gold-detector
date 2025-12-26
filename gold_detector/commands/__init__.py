@@ -1,2 +1,1 @@
 """Slash command registration helpers."""
-

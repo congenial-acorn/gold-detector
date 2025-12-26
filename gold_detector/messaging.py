@@ -166,12 +166,17 @@ class DiscordMessenger:
                         "[%s] Scan complete message sent (no role)", guild.name
                     )
             except discord.Forbidden as exc:
-                self.logger.error("[ping_loop] Permission denied for guild %s: %s", gid, exc)
+                self.logger.error(
+                    "[ping_loop] Permission denied for guild %s: %s", gid, exc
+                )
             except discord.HTTPException as exc:
                 self.logger.error("[ping_loop] HTTP error for guild %s: %s", gid, exc)
             except Exception as exc:  # noqa: BLE001
                 self.logger.error(
-                    "[ping_loop] Unexpected error for guild %s: %s", gid, exc, exc_info=True
+                    "[ping_loop] Unexpected error for guild %s: %s",
+                    gid,
+                    exc,
+                    exc_info=True,
                 )
             finally:
                 self.ping_queue.task_done()
@@ -216,17 +221,20 @@ class DiscordMessenger:
                 self.subscribers.discard(uid)
             except discord.Forbidden as exc:
                 if "Cannot send messages to this user" in str(exc):
-                    self.logger.info(
-                        "[DM] Cannot message user %s, unsubscribing", uid
-                    )
+                    self.logger.info("[DM] Cannot message user %s, unsubscribing", uid)
                     self.subscribers.discard(uid)
                 else:
-                    self.logger.warning("[DM] Forbidden error for user %s: %s", uid, exc)
+                    self.logger.warning(
+                        "[DM] Forbidden error for user %s: %s", uid, exc
+                    )
             except discord.HTTPException as exc:
                 self.logger.error("[DM] HTTP error sending to user %s: %s", uid, exc)
             except Exception as exc:  # noqa: BLE001
                 self.logger.error(
-                    "[DM] Unexpected error sending to user %s: %s", uid, exc, exc_info=True
+                    "[DM] Unexpected error sending to user %s: %s",
+                    uid,
+                    exc,
+                    exc_info=True,
                 )
 
         await asyncio.gather(
@@ -327,26 +335,39 @@ class DiscordMessenger:
 
         channel = self._resolve_sendable_channel(guild)
         if not channel:
-            self.logger.warning("[%s] No sendable channel resolved; skipping.", guild.name)
+            self.logger.warning(
+                "[%s] No sendable channel resolved; skipping.", guild.name
+            )
             return False
 
         try:
             await channel.send(content, allowed_mentions=AllowedMentions.none())
             if prev is None:
-                self.logger.info("[%s] Alert sent to #%s (first time)", guild.name, channel.name)
+                self.logger.info(
+                    "[%s] Alert sent to #%s (first time)", guild.name, channel.name
+                )
             else:
                 self.logger.info(
-                    "[%s] Alert sent to #%s (cooldown expired)", guild.name, channel.name
+                    "[%s] Alert sent to #%s (cooldown expired)",
+                    guild.name,
+                    channel.name,
                 )
             return True
         except discord.Forbidden as exc:
             self.logger.error(
-                "[%s] Permission denied sending to #%s: %s", guild.name, channel.name, exc
+                "[%s] Permission denied sending to #%s: %s",
+                guild.name,
+                channel.name,
+                exc,
             )
             return False
         except discord.HTTPException as exc:
             self.logger.error(
-                "[%s] HTTP error sending to #%s: %s", guild.name, channel.name, exc, exc_info=True
+                "[%s] HTTP error sending to #%s: %s",
+                guild.name,
+                channel.name,
+                exc,
+                exc_info=True,
             )
             return False
         except Exception as exc:  # noqa: BLE001

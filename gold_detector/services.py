@@ -148,8 +148,14 @@ class GuildPreferencesService:
 
     def source_labels(self, guild_id: int) -> Tuple[str, str]:
         prefs = self._prefs.get(guild_id) or {}
-        channel_src = "custom" if prefs.get("channel_id") or prefs.get("channel_name") else "default"
-        role_src = "custom" if prefs.get("role_id") or prefs.get("role_name") else "default"
+        channel_src = (
+            "custom"
+            if prefs.get("channel_id") or prefs.get("channel_name")
+            else "default"
+        )
+        role_src = (
+            "custom" if prefs.get("role_id") or prefs.get("role_name") else "default"
+        )
         return channel_src, role_src
 
 
