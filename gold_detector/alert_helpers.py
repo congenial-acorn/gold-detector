@@ -78,8 +78,7 @@ def assemble_hidden_market_messages(entries):
         for st in stations:
             metals = "; ".join(f"{m} stock: {qty}" for m, qty in st.get("metals", []))
             lines.append(
-                f"- {st.get('station_name')} ({st.get('station_type')}), "
-                f"<{st.get('url')}> - {metals}"
+                f"- {st.get('station_name')} ({st.get('station_type')}), <{st.get('url')}> - {metals}"
             )
         messages.append("\n".join(lines))
     return messages
