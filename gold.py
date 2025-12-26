@@ -41,7 +41,7 @@ def send_to_discord(message: str):
         )
 
 
-def set_loop_done_emitter(func):  # <-- ADD THIS
+def set_loop_done_emitter(func):
     """Bot registers a callback we call once per cycle if any alerts were sent."""
     global _emit_loop_done
     _emit_loop_done = func
@@ -265,6 +265,32 @@ def assemble_commodity_links(ids, system_name, distance):
     )
     return f"{base}&{commodity_bits}{tail}" if commodity_bits else f"{base}{tail}"
 
+
+def assemble_hidden_market_messages(entries):
+    """
+    entries: list of dicts with system_name, system_address, station_name, station_type, url, metals [(metal, stock)]
+    Returns a list of condensed messages, one per system.
+    """
+    grouped = {}
+    for entry in entries:
+        key = (entry.get("system_name"), entry.get("system_address"))
+        grouped.setdefault(key, []).append(entry)
+
+    messages = []
+    for (sys_name, sys_addr), stations in grouped.items():
+        sys_label = sys_name or "Unknown system"
+        addr_label = f"<{sys_addr}>" if sys_addr else "Unknown address"
+        lines = [f"Hidden markets detected in {sys_label} ({addr_label}):"]
+        for st in stations:
+            metals = "; ".join(f"{m} stock: {qty}" for m, qty in st.get("metals", []))
+            lines.append(
+                f"- {st.get('station_name')} ({st.get('station_type')}), "
+                f"<{st.get('url')}> — {metals}"
+            )
+        messages.append("\n".join(lines))
+    return messages
+
+
 def get_powerplay_status(systems):
     """Check each system in the list for Powerplay status."""
     for system in systems:
@@ -283,12 +309,16 @@ def get_powerplay_status(systems):
             # Anchor on the "Powerplay" label, then walk its parent div to pull fields
             label = soup.find("span", string=re.compile(r"Powerplay", re.IGNORECASE))
             if not label:
-                logger.info(f"No Powerplay section found for {system_name or system_url}")
+                logger.info(
+                    f"No Powerplay section found for {system_name or system_url}"
+                )
                 continue
 
             block = label.find_parent("div")
             if block is None:
-                logger.info(f"Powerplay section malformed for {system_name or system_url}")
+                logger.info(
+                    f"Powerplay section malformed for {system_name or system_url}"
+                )
                 continue
 
             power_link = block.find("a", href=re.compile(r"/elite/power/\d+/?"))
@@ -330,7 +360,7 @@ def get_powerplay_status(systems):
 
             msg = f"Powerplay info for {system_name or system_url}: " + "; ".join(parts)
             logger.info(msg)
-            
+
             id_list = []
             for i in range(len(system)):
                 if system[i] == "Gold":
@@ -339,7 +369,7 @@ def get_powerplay_status(systems):
                     id_list.append(PALLADIUM_NUM)
                 else:
                     continue
-            
+
             if status_text == "Unoccupied":
                 logger.debug(
                     f"Powerplay status is Unoccupied for {system_name or system_url}"
@@ -359,7 +389,10 @@ def get_powerplay_status(systems):
                 )
             send_to_discord(msg)
         except Exception as e:
-            logger.error(f"Failed to fetch Powerplay status from {system_url}: {e}", exc_info=True)
+            logger.error(
+                f"Failed to fetch Powerplay status from {system_url}: {e}",
+                exc_info=True,
+            )
             continue
 
 
@@ -464,25 +497,37 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                                 existing.append(metal)
                             if not last_time or (now - last_time) > cooldown:
                                 # build and send the message
-                                msg = (
-                                    f"Hidden market detected at {st_name} ({st_type}), <{url}>\n"
-                                    f"System: {system_name}, <{system_address}>\n"
-                                    f"{metal} stock: {stock}"
-                                )
-                                for i, message in enumerate(messages):
-                                    if st_name in message:
-                                        messages[i] = f"{message}, {metal} stock: {stock}"
+                                # Collect structured entries per station to aggregate later
+                                found = None
+                                for entry in messages:
+                                    if (
+                                        entry["station_name"] == st_name
+                                        and entry["system_address"] == system_address
+                                    ):
+                                        found = entry
                                         break
+                                if found:
+                                    if all(m != metal for m, _ in found["metals"]):
+                                        found["metals"].append((metal, stock))
                                 else:
-                                    messages.append(msg)
-                                #send_to_discord(msg)
+                                    messages.append(
+                                        {
+                                            "system_name": system_name,
+                                            "system_address": system_address,
+                                            "station_name": st_name,
+                                            "station_type": st_type,
+                                            "url": url,
+                                            "metals": [(metal, stock)],
+                                        }
+                                    )
+                                # send_to_discord(msg)
                                 last_ping[key] = now
                                 alerts_sent += 1
                                 logger.info(
                                     f"ALERT: {metal} @ {st_name} - price={buy_price}, stock={stock}, "
                                     f"cooldown until {now + cooldown}"
                                 )
-                            
+
                             else:
                                 remaining = cooldown - (now - last_time)
                                 logger.debug(
@@ -492,14 +537,14 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                 except Exception as e:
                     logger.error(f"Error processing station {url}: {e}", exc_info=True)
                     continue
-            
+
             logger.info(
                 f"Scan complete: checked {stations_checked} stations, sent {alerts_sent} alerts"
             )
             logger.info("Starting Powerplay check.")
-            for message in messages:
+            for message in assemble_hidden_market_messages(messages):
                 send_to_discord(message)
-            
+
             get_powerplay_status(systems)
 
             if _emit_loop_done:
@@ -531,7 +576,7 @@ def main():
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=6&pi16=99&pi1=0&pi17=0&pa2%5B%5D=26"
     )
-    
+
     url3 = (
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=3&pi16=2&pa2%5B%5D=26"
@@ -548,7 +593,7 @@ def main():
         "https://inara.cz/elite/nearest-stations/"
         "?formbrief=1&ps1=Sol&pi15=6&pi16=14&ps2=&pa2%5B%5D=26"
     )
-    
+
     monitor_metals([url1, url2, url3, url4, url5, url6], metals=["Gold", "Palladium"])
 
 

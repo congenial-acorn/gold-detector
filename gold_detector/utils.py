@@ -12,4 +12,3 @@ def message_key(text: str) -> int:
 
 def now() -> float:
     return time.time()
-

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import sys
 
 import discord
@@ -82,9 +81,7 @@ async def on_ready():
         settings.role_name_override or settings.default_role_name,
     )
     logger.info("Cooldown after each message: %sh", settings.cooldown_hours)
-    logger.info(
-        "Monitor interval: %ss", settings.monitor_interval_seconds
-    )
+    logger.info("Monitor interval: %ss", settings.monitor_interval_seconds)
     logger.info("HTTP cooldown: %ss", settings.http_cooldown_seconds)
 
     global _background_started
@@ -157,4 +154,3 @@ if __name__ == "__main__":
     except Exception as exc:  # noqa: BLE001
         logger.critical("Fatal error running bot: %s", exc, exc_info=True)
         raise
-

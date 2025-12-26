@@ -20,9 +20,7 @@ class GoldRunner:
         self.logger = logger or logging.getLogger("bot.gold_runner")
 
     def start(self) -> threading.Thread:
-        thread = threading.Thread(
-            target=self._run, name="gold-runner", daemon=True
-        )
+        thread = threading.Thread(target=self._run, name="gold-runner", daemon=True)
         thread.start()
         return thread
 
@@ -52,7 +50,9 @@ class GoldRunner:
                 break
 
             except KeyboardInterrupt:
-                self.logger.info("Received KeyboardInterrupt, shutting down gold.py thread")
+                self.logger.info(
+                    "Received KeyboardInterrupt, shutting down gold.py thread"
+                )
                 raise
             except BaseException as exc:  # noqa: BLE001
                 consecutive_failures += 1
@@ -66,7 +66,10 @@ class GoldRunner:
                     exc_info=True,
                 )
 
-                if "IP address blocked" in message or "Access Temporarily Restricted" in message:
+                if (
+                    "IP address blocked" in message
+                    or "Access Temporarily Restricted" in message
+                ):
                     self.logger.error(
                         "CRITICAL: IP blocked by inara.cz. "
                         "Contact inara@inara.cz with your IP address to resolve. "
@@ -74,9 +77,13 @@ class GoldRunner:
                         backoff,
                     )
                 elif "429" in message:
-                    self.logger.warning("HTTP 429 rate limit; restarting in %ss", backoff)
+                    self.logger.warning(
+                        "HTTP 429 rate limit; restarting in %ss", backoff
+                    )
                 elif "Connection" in message or "Timeout" in message:
-                    self.logger.error("Network error: %s; restarting in %ss", message, backoff)
+                    self.logger.error(
+                        "Network error: %s; restarting in %ss", message, backoff
+                    )
                 else:
                     self.logger.error("Unexpected error; restarting in %ss", backoff)
 
@@ -89,5 +96,6 @@ class GoldRunner:
 
                 time.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)
-                self.logger.info("Attempting to restart gold.py (backoff now %ss)", backoff)
-
+                self.logger.info(
+                    "Attempting to restart gold.py (backoff now %ss)", backoff
+                )

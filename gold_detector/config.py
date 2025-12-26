@@ -119,4 +119,3 @@ class Settings:
             http_cooldown_seconds=float(os.getenv("GOLD_HTTP_COOLDOWN", "1.0")),
             log_level=log_level,
         )
-
