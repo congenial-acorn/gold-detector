@@ -10,6 +10,7 @@ import discord
 from discord import AllowedMentions
 
 from .config import Settings
+from .message_filters import filter_message_for_preferences
 from .services import (
     CooldownService,
     GuildPreferencesService,
@@ -84,16 +85,12 @@ class DiscordMessenger:
         await self.client.wait_until_ready()
         while True:
             cycle_id, msg = await self.queue.get()
-            message_id = message_key(msg)
             try:
                 guilds = list(self.client.guilds)
                 guild_tasks = [
-                    asyncio.create_task(self._send_to_guild(g, msg, message_id))
-                    for g in guilds
+                    asyncio.create_task(self._send_to_guild(g, msg)) for g in guilds
                 ]
-                dm_task = asyncio.create_task(
-                    self._dm_subscribers_broadcast(msg, message_id)
-                )
+                dm_task = asyncio.create_task(self._dm_subscribers_broadcast(msg))
 
                 results = await asyncio.gather(
                     *(guild_tasks + [dm_task]), return_exceptions=True
@@ -181,12 +178,11 @@ class DiscordMessenger:
             finally:
                 self.ping_queue.task_done()
 
-    async def _dm_subscribers_broadcast(self, content: str, message_id: int) -> None:
+    async def _dm_subscribers_broadcast(self, content: str) -> None:
         targets = self.subscribers.all()
         if not targets:
             return
 
-        ts = now()
         allowed_mentions = AllowedMentions.none()
 
         async def _send_one(uid: int) -> None:
@@ -197,6 +193,16 @@ class DiscordMessenger:
                     )
                     return
 
+            prefs = self.guild_prefs.get_preferences("user", uid)
+            filtered = filter_message_for_preferences(content, prefs)
+            if filtered is None:
+                self.logger.debug(
+                    "[DM] Skipping user %s due to preference filters", uid
+                )
+                return
+
+            ts = now()
+            message_id = message_key(filtered)
             allow, prev, remaining = self.user_cooldowns.should_send(
                 uid, message_id, ts, update_on_allow=False
             )
@@ -211,7 +217,7 @@ class DiscordMessenger:
 
             try:
                 user = await self.client.fetch_user(uid)
-                await user.send(content, allowed_mentions=allowed_mentions)
+                await user.send(filtered, allowed_mentions=allowed_mentions)
                 self.user_cooldowns.mark_sent(uid, message_id, ts)
                 self.logger.debug("[DM] Sent to user %s (prev=%s)", uid, prev)
             except discord.NotFound:
@@ -303,14 +309,11 @@ class DiscordMessenger:
                 return role
         return None
 
-    async def _send_to_guild(
-        self, guild: discord.Guild, content: str, message_id: int
-    ) -> bool:
+    async def _send_to_guild(self, guild: discord.Guild, content: str) -> bool:
         if self.opt_outs.is_opted_out(guild.id):
             self.logger.debug("[%s] Skipping - guild opted out", guild.name)
             return False
 
-        ts = now()
         if self.settings.debug_mode and self.settings.debug_server_id:
             if guild.id != self.settings.debug_server_id:
                 self.logger.debug(
@@ -320,6 +323,16 @@ class DiscordMessenger:
                 )
                 return False
 
+        prefs = self.guild_prefs.get_preferences("guild", guild.id)
+        filtered = filter_message_for_preferences(content, prefs)
+        if filtered is None:
+            self.logger.debug(
+                "[%s] Message filtered out by preferences; skipping.", guild.name
+            )
+            return False
+
+        ts = now()
+        message_id = message_key(filtered)
         allowed, prev, remaining = self.server_cooldowns.should_send(
             guild.id, message_id, ts
         )
@@ -341,7 +354,7 @@ class DiscordMessenger:
             return False
 
         try:
-            await channel.send(content, allowed_mentions=AllowedMentions.none())
+            await channel.send(filtered, allowed_mentions=AllowedMentions.none())
             if prev is None:
                 self.logger.info(
                     "[%s] Alert sent to #%s (first time)", guild.name, channel.name

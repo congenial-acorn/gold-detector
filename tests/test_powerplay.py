@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import gold  # noqa: E402
+import gold_detector.powerplay as powerplay  # noqa: E402
 
 
 class FakeResponse:
@@ -33,13 +33,13 @@ def _pp_html(status: str, percent: str = "51.8%"):
 def test_powerplay_fortified_builds_links(monkeypatch):
     calls = []
 
-    monkeypatch.setattr(gold, "send_to_discord", lambda msg: calls.append(msg))
+    monkeypatch.setattr(powerplay, "send_to_discord", lambda msg: calls.append(msg))
     monkeypatch.setattr(
-        gold, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
     )
 
     systems = [["https://inara.cz/elite/starsystem/345798/", "Gold", "Palladium"]]
-    gold.get_powerplay_status(systems)
+    powerplay.get_powerplay_status(systems)
 
     assert len(calls) == 2  # Fortified alert + info message
     assert "Fortified" in calls[0]
@@ -51,13 +51,13 @@ def test_powerplay_fortified_builds_links(monkeypatch):
 def test_powerplay_stronghold_uses_distance_30(monkeypatch):
     calls = []
 
-    monkeypatch.setattr(gold, "send_to_discord", lambda msg: calls.append(msg))
+    monkeypatch.setattr(powerplay, "send_to_discord", lambda msg: calls.append(msg))
     monkeypatch.setattr(
-        gold, "http_get", lambda url: FakeResponse(_pp_html("Stronghold"))
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Stronghold"))
     )
 
     systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
-    gold.get_powerplay_status(systems)
+    powerplay.get_powerplay_status(systems)
 
     assert len(calls) == 2  # Stronghold alert + info message
     assert "Stronghold" in calls[0]

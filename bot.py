@@ -7,6 +7,7 @@ from discord import app_commands
 from gold_detector.commands.alerts import register_alert_commands
 from gold_detector.commands.errors import attach_error_handler
 from gold_detector.commands.health import register_health_commands
+from gold_detector.commands.preferences import register_preference_commands
 from gold_detector.commands.server_settings import register_server_settings_commands
 from gold_detector.config import Settings, configure_logging
 from gold_detector.gold_runner import GoldRunner
@@ -57,6 +58,7 @@ messenger = DiscordMessenger(
 
 register_alert_commands(tree, subscribers, settings.help_url)
 register_server_settings_commands(tree, guild_prefs, opt_outs)
+register_preference_commands(tree, guild_prefs)
 register_health_commands(tree)
 attach_error_handler(tree, logger)
 
