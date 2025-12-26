@@ -370,15 +370,14 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
     # key = f"{station_id}-{metal_name}"
     last_ping = {}  # key -> datetime of last ping
     cooldown = datetime.timedelta(hours=cooldown_hours)
-    systems = []
-    messages = []
-
     logger.info(
         f"Starting monitor loop: checking {len(metals)} metals with {cooldown_hours}h cooldown"
     )
 
     while True:
         try:
+            systems = []
+            messages = []
             now = datetime.datetime.now(timezone.utc)
             logger.info("=== Beginning new scan cycle ===")
             market_urls = get_station_market_urls(near_urls)
@@ -470,9 +469,9 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                                     f"System: {system_name}, <{system_address}>\n"
                                     f"{metal} stock: {stock}"
                                 )
-                                for message in messages:
+                                for i, message in enumerate(messages):
                                     if st_name in message:
-                                        message += f", {metal} stock: {stock}"
+                                        messages[i] = f"{message}, {metal} stock: {stock}"
                                         break
                                 else:
                                     messages.append(msg)
