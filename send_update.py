@@ -42,7 +42,11 @@ async def send_update_to_dms(client: discord.Client, message: str):
     for uid in subs:
         try:
             user = await client.fetch_user(int(uid))
-            await user.send(message, allowed_mentions=discord.AllowedMentions.none())
+            await user.send(
+                message,
+                allowed_mentions=discord.AllowedMentions.none(),
+                suppress_embeds=True,
+            )
             print(f"DM sent -> {user.id}")
             await asyncio.sleep(0.5)
         except Exception as e:
@@ -73,6 +77,7 @@ async def send_update_to_servers(
                 allowed_mentions=discord.AllowedMentions(
                     roles=False, users=False, everyone=False
                 ),
+                suppress_embeds=True,
             )
             print(f"[{guild.name}] sent -> #{target.name}")
             await asyncio.sleep(0.5)
