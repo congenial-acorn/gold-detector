@@ -46,7 +46,8 @@ _CANON = {
 
 
 def _canon_base(raw: str) -> str:
-    return _CANON[raw.lower().replace("  ", " ")]
+    normalized = re.sub(r"\s+", " ", raw)
+    return _CANON[normalized.lower()]
 
 
 def _scan_with_anchor(node: PageElement) -> Optional[str]:

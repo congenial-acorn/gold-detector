@@ -56,7 +56,7 @@ def mask_commodity_links(urls):
             text = "Sell Palladium here"
         else:
             text = "Sell here"
-        masked.append(f"({text})[{url}]")
+        masked.append(f"[{text}]({url})")
     return " ".join(masked)
 
 

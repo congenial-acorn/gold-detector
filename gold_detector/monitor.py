@@ -101,7 +101,11 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
             logger.info("=== Beginning new scan cycle ===")
             market_urls = get_station_market_urls(near_urls)
 
-            alive_ids = {re.search(r"/(\d+)/$", u).group(1) for u in market_urls}
+            alive_ids = set()
+            for u in market_urls:
+                match = re.search(r"/(\d+)/$", u)
+                if match:
+                    alive_ids.add(match.group(1))
             pruned = [k for k in list(last_ping) if k.split("-", 1)[0] not in alive_ids]
             for key in pruned:
                 del last_ping[key]
@@ -152,7 +156,11 @@ def monitor_metals(near_urls, metals, cooldown_hours=0):
                         )
 
                         if buy_price > PRICE_THRESHOLD and stock > STOCK_THRESHOLD:
-                            station_id = re.search(r"/(\d+)/$", url).group(1)
+                            match = re.search(r"/(\d+)/$", url)
+                            if not match:
+                                logger.warning("Could not extract station ID from URL: %s", url)
+                                continue
+                            station_id = match.group(1)
                             st_type = get_station_type(station_id)
                             key = f"{station_id}-{metal}"
                             last_time = last_ping.get(key)

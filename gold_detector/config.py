@@ -92,7 +92,21 @@ class Settings:
         alert_override = sanitize_channel_name(os.getenv("ALERT_CHANNEL_NAME", ""))
         role_override = sanitize_role_name(os.getenv("ROLE_NAME", ""))
 
-        cooldown_hours = float(os.getenv("COOLDOWN_HOURS", 48.0))
+        try:
+            cooldown_hours = float(os.getenv("COOLDOWN_HOURS", "48.0"))
+        except ValueError:
+            cooldown_hours = 48.0
+
+        try:
+            monitor_interval = float(os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", "1800"))
+        except ValueError:
+            monitor_interval = 1800.0
+
+        try:
+            http_cooldown = float(os.getenv("GOLD_HTTP_COOLDOWN", "1.0"))
+        except ValueError:
+            http_cooldown = 1.0
+
         log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
         return cls(
@@ -113,9 +127,7 @@ class Settings:
                 "HELP_URL",
                 "https://github.com/congenial-acorn/gold-detector/tree/main?tab=readme-ov-file#commands",
             ),
-            monitor_interval_seconds=float(
-                os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", "1800")
-            ),
-            http_cooldown_seconds=float(os.getenv("GOLD_HTTP_COOLDOWN", "1.0")),
+            monitor_interval_seconds=monitor_interval,
+            http_cooldown_seconds=http_cooldown,
             log_level=log_level,
         )

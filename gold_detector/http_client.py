@@ -61,10 +61,14 @@ def http_get(
             logger.debug("HTTP %s from %s", resp.status_code, url)
 
             if resp.status_code == 200 and "Access Temporarily Restricted" in resp.text:
-                logger.error("IP BLOCKED by %s", url.split("/")[2])
+                try:
+                    domain = url.split("/")[2]
+                except IndexError:
+                    domain = url
+                logger.error("IP BLOCKED by %s", domain)
                 logger.error("Response preview: %s", resp.text[:500])
                 raise requests.exceptions.HTTPError(
-                    f"IP address blocked by {url.split('/')[2]}. "
+                    f"IP address blocked by {domain}. "
                     "Check logs for contact information.",
                     response=resp,
                 )
