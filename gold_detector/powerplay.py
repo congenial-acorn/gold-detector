@@ -126,7 +126,7 @@ def get_powerplay_status(systems):
                 masked_links = mask_commodity_links(commodity_url)
                 send_to_discord(
                     f"{system_name} is a {fields['power']} {status_text} system.\n"
-                    f"You can earn merits by selling for large profit in these accqusition systems: {masked_links}"
+                    f"You can earn merits by selling for large profit in these acquisition systems: {masked_links}"
                 )
             elif status_text == "Stronghold":
                 commodity_url = assemble_commodity_links(

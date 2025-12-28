@@ -1,4 +1,10 @@
-## [1.5.0] - 2026-12-25
+## [1.5.1] - 2025-12-28
+
+### Fixed
+- Fixed various bugs and errors to prevent possible crashes.
+- Fixed typos in messages.
+
+## [1.5.0] - 2025-12-25
 ### Added
 - New `/set_preferences` slash command group lets users and servers filter alerts by station type, commodity (Gold/Palladium), and preferred Powerplay leaders; filters apply to both server posts and DMs.
 - Powerplay awareness: when a monitored system is Fortified or Stronghold, the bot posts merit guidance with masked Inara commodity links and skips unoccupied systems.

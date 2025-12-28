@@ -164,7 +164,7 @@ class GuildPreferencesService:
     def set_channel(self, guild_id: int, channel_id: int, channel_name: str) -> None:
         with self._lock:
             prefs = self._prefs.get(guild_id, {})
-            prefs["channel_id"] = int(channel_id)
+            prefs["channel_id"] = channel_id
             prefs["channel_name"] = sanitize_channel_name(channel_name)
             self._prefs[guild_id] = prefs
             self._persist_locked()
@@ -180,7 +180,7 @@ class GuildPreferencesService:
     def set_role(self, guild_id: int, role_id: int, role_name: str) -> None:
         with self._lock:
             prefs = self._prefs.get(guild_id, {})
-            prefs["role_id"] = int(role_id)
+            prefs["role_id"] = role_id
             prefs["role_name"] = sanitize_role_name(role_name)
             self._prefs[guild_id] = prefs
             self._persist_locked()
