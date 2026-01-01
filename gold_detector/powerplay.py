@@ -144,7 +144,7 @@ def get_powerplay_status(systems):
                     f"You can earn merits by selling for large profit: {masked_links}"
                 )
 
-            send_to_discord(msg)
+            #send_to_discord(msg)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "Failed to fetch Powerplay status from %s: %s",
