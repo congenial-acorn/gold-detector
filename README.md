@@ -4,6 +4,8 @@ Bot invite link (also please read Bot Setup section): https://discord.com/oauth2
 
 Please report all bugs by creating issues!
 
+ATTENTION: Bot permissions were incorrectly set. The permissions are now correct as of 1/1/2026. If you invited the bot to a server before that date, please grant it the "View Channels" permission or else it will not work.
+
 ## Info
 Trading is one of the best ways to make money in Elite: Dangerous, and the best way to trade is to buy low and sell high. Easy, right? Many factors affect market prices, but the Background Simulation (BGS) is among the most important.
 
@@ -11,7 +13,7 @@ The infrastructure failure BGS state causes the market price of gold to plunge b
 
 But some stations are hidden from Inara. The bubble is so large that not all stations are updated in real time. This bot will detect the stations that are in infrastructure failure, but without an updated market. So they will have ample stocks of gold for you to profit.
 
-In addition, you can use this cheap gold to earn merits by selling it in accqusition system. The bot will alert you when such opportunities are available. You can choose which powerplay factions to recieve alerts from using commands. See [Preferences](#preferences) and [Commands](#commands). 
+In addition, you can use this cheap gold to earn merits by selling it in an acquisition system. The bot will alert you when such opportunities are available. You can choose which PowerPlay factions to receive alerts from using commands. See [Preferences](#preferences) and [Commands](#commands). 
 
 Note: You may read about other effects of BGS on markets here https://cdb.sotl.org.uk/effects
 
