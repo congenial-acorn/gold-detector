@@ -2,8 +2,12 @@
 
 Happy New Year! 🎉
 
+### Added
+- Added `/diagnose` command to check if channel permissions are set properly.
+
 ### Fixed
-Removed debug powerplay message to reduce spam and unneeded pings.
+- Removed debug powerplay message to reduce spam and unneeded pings.
+- Fixed bot permissions. See top of README for details.
 
 ## [1.5.1] - 2025-12-28
 

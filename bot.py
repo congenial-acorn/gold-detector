@@ -68,7 +68,7 @@ _background_started = False
 @client.event
 async def on_ready():
     await client.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.watching, name="for /help"),
+        activity=discord.Activity(type=discord.ActivityType.watching, name="/help if you don't receive alerts"),
         status=discord.Status.online,
     )
     logger.info("=== Bot Ready ===")
