@@ -1,3 +1,10 @@
+## [1.5.2] - 2026-1-1
+
+Happy New Year! 🎉
+
+### Fixed
+Removed debug powerplay message to reduce spam and unneeded pings.
+
 ## [1.5.1] - 2025-12-28
 
 ### Fixed
