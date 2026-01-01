@@ -22,7 +22,7 @@ IMPORTANT! Go to any channel and type `/alerts_on`. Or, click the 4-shapes icon 
 
 ## Bot Setup (servers)
 Invite the bot using this link https://discord.com/oauth2/authorize?client_id=1415805825364267151 and select a server.
-Set a channel using `/set_alert_channel`. If you wish, create a role and set it using `/set_alert_role` to get pings.
+Set a channel using `/set_alert_channel`. If you wish, create a role and set it using `/set_alert_role` to get pings. Use `/diagnose` to make sure the bot can send messages in your selected channel.
 
 If you don't do this, the bot will send to `#market-watch` and ping `@Market Alert` by default.
 
@@ -43,6 +43,8 @@ Want to filter your alerts? Use `/set_preferences` to choose station types (Star
 `/help`: Get a link to this page.
 
 The following commands require Manage Guild permission and are for servers only.
+
+`/diagnose`: Server command to check the bot's messaging permissions in the channel the command is sent in.
 
 `/server_alerts_off`: Server command to disable alerts.
 

@@ -56,5 +56,10 @@ def register_alert_commands(
     @tree.command(name="help", description="Show help and commands for this bot")
     async def help_cmd(interaction: discord.Interaction):
         await interaction.response.send_message(
-            f"Gold Detector commands and docs: <{help_url}>", ephemeral=True
+            (
+                "ATTENTION: Bot permissions were incorrectly set. The permissions are now correct as of 1/1/2026.\n"
+                'If you invited the bot to a server before that date, please grant it the "View Channels" permission.\n\n'
+                f"Gold Detector commands and docs: <{help_url}>"
+            ),
+            ephemeral=True,
         )
