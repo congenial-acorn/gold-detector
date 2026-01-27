@@ -462,3 +462,179 @@ else:
 - Production database: `market_database.json` in project root
 - Created by gold.py when monitor_metals() runs
 - Persists market data and cooldowns across runs
+
+## Task 5: Powerplay Integration Tests (RED Phase)
+
+### Test File Modified
+- `tests/test_powerplay.py` - Added 3 new integration tests for MarketDatabase
+
+### New Tests Added (RED Phase - Expected to fail)
+
+1. **test_get_powerplay_status_writes_to_database**
+   - Verifies `write_powerplay_entry()` called with correct params
+   - Verifies powerplay fields captured: power, status, progress
+   - Uses Mock(spec=MarketDatabase) to verify method calls
+
+2. **test_get_powerplay_status_uses_database_for_cooldowns**
+   - Verifies `check_cooldown()` called before `send_to_discord()`
+   - Verifies `mark_sent()` called after sending
+   - Verifies cooldown_seconds parameter passed
+   - Mock returns True to simulate cooldown expired
+
+3. **test_get_powerplay_status_respects_database_cooldown**
+   - Verifies when `check_cooldown()` returns False, no message sent
+   - Verifies `mark_sent()` NOT called when cooldown active
+   - Mock returns False to simulate cooldown still active
+
+### Test Patterns Used
+
+#### Mock Database Pattern
+```python
+from unittest.mock import Mock
+from gold_detector.market_database import MarketDatabase
+
+mock_db = Mock(spec=MarketDatabase)
+mock_db.check_cooldown.return_value = True  # or False
+```
+
+#### Existing Test Pattern Reused
+- Used `_pp_html()` helper function from existing tests
+- Used monkeypatch pattern for mocking dependencies
+- Used FakeResponse class for HTTP mocking
+
+#### Assertion Pattern
+```python
+# Verify method called with keyword args
+mock_db.write_powerplay_entry.assert_called_once()
+call_args = mock_db.write_powerplay_entry.call_args
+assert call_args[1]["system_name"] == "Sol"
+assert call_args[1]["power"] == "Jerome Archer"
+```
+
+### Test Results (RED Phase - Expected)
+```
+tests/test_powerplay.py::test_get_powerplay_status_writes_to_database FAILED
+tests/test_powerplay.py::test_get_powerplay_status_uses_database_for_cooldowns FAILED
+tests/test_powerplay.py::test_get_powerplay_status_respects_database_cooldown FAILED
+```
+
+**Failure Reason**: `TypeError: get_powerplay_status() got an unexpected keyword argument 'market_db'`
+
+This is the expected RED phase behavior - tests define the interface before implementation.
+
+### Pre-existing Test Failures
+The existing tests (`test_powerplay_fortified_builds_links`, `test_powerplay_stronghold_uses_distance_30`) were already failing before this task:
+- Commit f923514 "Remove powerplay info message that was spamming channels" commented out `send_to_discord(msg)` on line 147
+- Tests expect 2 messages but only get 1 (the alert message, not the info message)
+- This is a pre-existing issue unrelated to MarketDatabase integration
+
+### Expected get_powerplay_status Changes (GREEN Phase)
+
+Based on test expectations, get_powerplay_status will need:
+
+1. **New parameter**: `market_db: Optional[MarketDatabase] = None`
+   - Optional to maintain backward compatibility
+   - When None, use existing behavior
+
+2. **Call sequence**:
+   ```python
+   if market_db:
+       # Write powerplay entry
+       market_db.write_powerplay_entry(
+           system_name=system_name,
+           system_address=system_address,  # Need to extract from URL
+           power=fields["power"],
+           status=fields["status"],
+           progress=fields["progress"],
+       )
+       
+       # Check cooldown before sending
+       if market_db.check_cooldown(
+           system_name=system_name,
+           station_name=system_name,  # Use system_name as placeholder
+           metal="powerplay",  # Use "powerplay" as placeholder
+           recipient_type="...",  # TBD: needs recipient info
+           recipient_id="...",    # TBD: needs recipient info
+           cooldown_seconds=cooldown_seconds,
+       ):
+           send_to_discord(message)
+           market_db.mark_sent(...)
+   else:
+       # Existing behavior
+       send_to_discord(message)
+   ```
+
+3. **System address extraction**: Need to extract system_address from URL
+   - URL format: `https://inara.cz/elite/starsystem/1496596/`
+   - Extract `1496596` as system_address
+
+### Powerplay Cooldown Key Design
+
+**Challenge**: Powerplay alerts are system-based, not station-based like market alerts.
+- Market cooldown key: (station, metal, recipient_type, recipient_id)
+- Powerplay cooldown key: (system, recipient_type, recipient_id)
+
+**Solution**: Use placeholders to fit MarketDatabase API:
+- `station_name=system_name` (use system name as station placeholder)
+- `metal="powerplay"` (use "powerplay" as metal placeholder)
+
+**Rationale**: 
+- Avoids modifying MarketDatabase API for powerplay-specific cooldowns
+- Reuses existing cooldown infrastructure
+- Simple and pragmatic approach
+
+### Open Questions for GREEN Phase
+
+1. **Recipient info**: Where does recipient_type and recipient_id come from?
+   - Current get_powerplay_status doesn't have recipient context
+   - May need to be passed as parameter or extracted from Discord context
+   - Tests expect these to be passed to check_cooldown/mark_sent
+
+2. **Cooldown duration**: What should cooldown_seconds be for powerplay?
+   - Market alerts use 1 hour (3600 seconds)
+   - Powerplay may need different cooldown
+   - Tests don't specify exact value, just that parameter is passed
+
+3. **System address extraction**: How to extract system_address from URL?
+   - URL format: `https://inara.cz/elite/starsystem/1496596/`
+   - Use regex to extract numeric ID
+   - Or use URL as system_address directly
+
+### Test Coverage Summary
+- **Total tests**: 5 (2 existing + 3 new)
+- **Passing**: 0 (existing tests broken by pre-existing commit)
+- **Failing (new)**: 3 (expected RED phase failures)
+- **Failing (pre-existing)**: 2 (unrelated to this task)
+- **Coverage**: Database write, cooldown check, cooldown respect, powerplay fields
+
+### Next Steps (GREEN Phase - Task 6)
+1. Modify get_powerplay_status to accept optional market_db parameter
+2. Extract system_address from URL
+3. Add write_powerplay_entry calls when powerplay detected
+4. Add check_cooldown/mark_sent calls around send_to_discord
+5. Use system_name as station placeholder, "powerplay" as metal placeholder
+6. Resolve recipient_type/recipient_id question
+7. Run tests to verify GREEN phase (new tests should pass)
+8. Consider fixing pre-existing test failures (optional)
+
+### Lessons Learned
+
+1. **Pre-existing test failures**: Always check if test failures existed before your changes
+   - Use git history to verify
+   - Document pre-existing issues separately
+   - Don't try to fix unrelated issues in current task
+
+2. **Placeholder strategy for API mismatch**: When integrating systems with different models:
+   - Use placeholders to fit existing API
+   - Document why placeholders are needed
+   - Keep solution simple and pragmatic
+
+3. **Test-first development (RED phase)**: Writing tests first helps:
+   - Define clear interface expectations
+   - Catch design issues early
+   - Provide clear implementation roadmap
+
+4. **Mock verification patterns**: Use `call_args[1]` to verify keyword arguments:
+   - More robust than positional argument checking
+   - Clearer test intent
+   - Easier to maintain when function signature changes
