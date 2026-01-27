@@ -387,7 +387,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 6. Integrate MarketDatabase into powerplay.py (TDD - GREEN phase)
+### - [x] 6. Integrate MarketDatabase into powerplay.py (TDD - GREEN phase)
 
 **What to do**:
 - Modify `gold_detector/powerplay.py`:
