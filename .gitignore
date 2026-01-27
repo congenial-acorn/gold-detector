@@ -235,5 +235,5 @@ __marimo__/
 /.idea/vcs.xml
 .idea/deployment.xml
 *log.txt
-.sisyphus/
+.sisyphus/*
 
