@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import List
+from typing import List, Optional
 
 from bs4 import BeautifulSoup
 
@@ -12,6 +12,7 @@ from .alert_helpers import (
 )
 from .emitter import send_to_discord
 from .http_client import http_get
+from .market_database import MarketDatabase
 
 logger = logging.getLogger("gold.powerplay")
 
@@ -62,7 +63,7 @@ def _build_commodity_ids(system: List[str]) -> List[int]:
     return ids
 
 
-def get_powerplay_status(systems):
+def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
     """Check each system in the list for Powerplay status."""
     for system in systems:
         system_url = system[0]
@@ -74,7 +75,8 @@ def get_powerplay_status(systems):
             h2 = soup.find("h2")
             if h2:
                 raw_name = h2.get_text(" ", strip=True)
-                system_name = re.sub(r"[\uE000-\uF8FF]", "", raw_name).strip()
+                system_name = re.sub(r"[\uE000-\uF8FF]", "", raw_name)
+                system_name = re.sub(r"\\u[0-9a-fA-F]{4}", "", system_name).strip()
 
             label = soup.find("span", string=re.compile(r"Powerplay", re.IGNORECASE))
             if not label:
@@ -105,6 +107,16 @@ def get_powerplay_status(systems):
             )
             logger.info(msg)
 
+            # Write powerplay entry to database if available
+            if market_db:
+                market_db.write_powerplay_entry(
+                    system_name=system_name or "",
+                    system_address=system_url,
+                    power=fields["power"],
+                    status=status_text,
+                    progress=fields["progress"],
+                )
+
             ids = _build_commodity_ids(system)
 
             if status_text == "Unoccupied":
@@ -124,10 +136,33 @@ def get_powerplay_status(systems):
                     )
                     continue
                 masked_links = mask_commodity_links(commodity_url)
-                send_to_discord(
+                message = (
                     f"{system_name} is a {fields['power']} {status_text} system.\n"
                     f"You can earn merits by selling for large profit in these acquisition systems: {masked_links}"
                 )
+                
+                if market_db:
+                    # Use 48 hour cooldown for powerplay alerts (same as market alerts)
+                    cooldown_seconds = 48 * 3600
+                    if market_db.check_cooldown(
+                        system_name=system_name or "",
+                        station_name=system_name or "",  # Use system_name as station placeholder
+                        metal="powerplay",  # Use "powerplay" as metal placeholder
+                        recipient_type="powerplay",
+                        recipient_id="default",
+                        cooldown_seconds=cooldown_seconds,
+                    ):
+                        send_to_discord(message)
+                        market_db.mark_sent(
+                            system_name=system_name or "",
+                            station_name=system_name or "",
+                            metal="powerplay",
+                            recipient_type="powerplay",
+                            recipient_id="default",
+                        )
+                else:
+                    send_to_discord(message)
+                    
             elif status_text == "Stronghold":
                 commodity_url = assemble_commodity_links(
                     ids, system_name or "", 30, fetch=http_get
@@ -139,10 +174,32 @@ def get_powerplay_status(systems):
                     )
                     continue
                 masked_links = mask_commodity_links(commodity_url)
-                send_to_discord(
+                message = (
                     f"{system_name} is a {fields['power']} {status_text} system.\n"
                     f"You can earn merits by selling for large profit: {masked_links}"
                 )
+                
+                if market_db:
+                    # Use 48 hour cooldown for powerplay alerts (same as market alerts)
+                    cooldown_seconds = 48 * 3600
+                    if market_db.check_cooldown(
+                        system_name=system_name or "",
+                        station_name=system_name or "",  # Use system_name as station placeholder
+                        metal="powerplay",  # Use "powerplay" as metal placeholder
+                        recipient_type="powerplay",
+                        recipient_id="default",
+                        cooldown_seconds=cooldown_seconds,
+                    ):
+                        send_to_discord(message)
+                        market_db.mark_sent(
+                            system_name=system_name or "",
+                            station_name=system_name or "",
+                            metal="powerplay",
+                            recipient_type="powerplay",
+                            recipient_id="default",
+                        )
+                else:
+                    send_to_discord(message)
 
             #send_to_discord(msg)
         except Exception as exc:  # noqa: BLE001

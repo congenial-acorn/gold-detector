@@ -275,7 +275,10 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
                 send_to_discord(message)
 
             system_list = [[url] + found for url, found in systems.items()]
-            get_powerplay_status(system_list)
+            if market_db:
+                get_powerplay_status(system_list, market_db=market_db)
+            else:
+                get_powerplay_status(system_list)
 
             if market_db:
                 market_db.end_scan(scanned_systems)

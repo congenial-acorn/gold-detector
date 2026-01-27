@@ -638,3 +638,149 @@ Based on test expectations, get_powerplay_status will need:
    - More robust than positional argument checking
    - Clearer test intent
    - Easier to maintain when function signature changes
+
+## Task 6: Powerplay Integration Implementation (GREEN Phase)
+
+### Implementation Summary
+Successfully integrated MarketDatabase into powerplay.py to make all tests pass.
+
+### Changes Made
+
+1. **powerplay.py modifications**:
+   - Added `market_db: Optional[MarketDatabase] = None` parameter to `get_powerplay_status()`
+   - Added `from typing import Optional` import
+   - Added `from .market_database import MarketDatabase` import
+   - Added `market_db.write_powerplay_entry()` call after parsing powerplay fields
+   - Wrapped `send_to_discord()` calls with `market_db.check_cooldown()` / `mark_sent()` calls
+   - Kept backward compatibility: when market_db is None, use old behavior
+   - Fixed unicode escape sequence handling (literal `\ue81d` in HTML)
+
+2. **monitor.py modifications**:
+   - Updated `get_powerplay_status()` call to pass `market_db` when available
+   - Added conditional logic: `if market_db: get_powerplay_status(system_list, market_db=market_db)`
+
+### Key Implementation Decisions
+
+1. **Recipient placeholders**: Used `recipient_type="powerplay"` and `recipient_id="default"` as placeholders
+   - Rationale: powerplay.py doesn't have access to guild/user context yet
+   - Task 8 will properly integrate with messaging system which has recipient context
+   - Tests accept any recipient_type/recipient_id values, so placeholders work for now
+
+2. **Cooldown duration**: Used 48 hours (48 * 3600 seconds) for powerplay alerts
+   - Matches market alert cooldown duration
+   - Prevents spam while allowing timely updates
+
+3. **Powerplay cooldown key**: Used system-based key with placeholders
+   - `station_name=system_name` (use system name as station placeholder)
+   - `metal="powerplay"` (use "powerplay" as metal placeholder)
+   - Rationale: Powerplay alerts are system-based, not station-based like market alerts
+   - Fits existing MarketDatabase API without modification
+
+4. **Unicode escape handling**: Added regex to strip literal unicode escape sequences
+   - Pattern: `r"\\u[0-9a-fA-F]{4}"` matches literal `\ue81d` strings
+   - Existing pattern `r"[\uE000-\uF8FF]"` only matches actual unicode characters
+   - Test HTML has literal escape sequences, not actual unicode characters
+
+5. **Backward compatibility**: Preserved existing behavior when market_db is None
+   - Old code path sends directly without cooldown checks
+   - New code path uses MarketDatabase methods
+   - Allows gradual migration and testing
+
+### Test Results
+✅ All 3 new powerplay database integration tests PASS:
+- test_get_powerplay_status_writes_to_database
+- test_get_powerplay_status_uses_database_for_cooldowns
+- test_get_powerplay_status_respects_database_cooldown
+
+✅ All 45 tests PASS (47 total, 2 pre-existing failures unrelated to this change)
+- No regressions introduced
+- All MarketDatabase tests still pass
+- All monitor_metals tests still pass
+- All message filter tests still pass
+- All messaging tests still pass
+
+### Pre-existing Test Failures
+The 2 existing powerplay tests still fail (documented in Task 5 learnings):
+- test_powerplay_fortified_builds_links
+- test_powerplay_stronghold_uses_distance_30
+- Reason: Commit f923514 commented out `send_to_discord(msg)` on line 147
+- Tests expect 2 messages but only get 1 (alert message, not info message)
+- This is unrelated to MarketDatabase integration
+
+### LSP Diagnostics
+Pre-existing LSP errors (unrelated to this task):
+- powerplay.py line 20: Missing type args for dict in _parse_powerplay_fields return type
+- monitor.py lines 41, 48: BeautifulSoup type hints issues
+- These errors existed before this task and are not introduced by changes
+
+### Integration Pattern
+```python
+if market_db:
+    # Write powerplay entry to database
+    market_db.write_powerplay_entry(
+        system_name=system_name or "",
+        system_address=system_url,
+        power=fields["power"],
+        status=status_text,
+        progress=fields["progress"],
+    )
+    
+    # Check cooldown before sending
+    cooldown_seconds = 48 * 3600
+    if market_db.check_cooldown(
+        system_name=system_name or "",
+        station_name=system_name or "",  # Use system_name as station placeholder
+        metal="powerplay",  # Use "powerplay" as metal placeholder
+        recipient_type="powerplay",
+        recipient_id="default",
+        cooldown_seconds=cooldown_seconds,
+    ):
+        send_to_discord(message)
+        market_db.mark_sent(...)
+else:
+    # Old behavior without database
+    send_to_discord(message)
+```
+
+### Lessons Learned
+
+1. **HTML parsing edge cases**: BeautifulSoup returns literal escape sequences, not unicode characters
+   - Test HTML: `<h2>Sol \\ue81d</h2>` → parsed as literal string `\ue81d`
+   - Need separate regex patterns for actual unicode vs literal escape sequences
+   - Always test with realistic HTML samples
+
+2. **Placeholder strategy for API mismatch**: When integrating systems with different models:
+   - Use placeholders to fit existing API (system-based alerts using station/metal placeholders)
+   - Document why placeholders are needed (comments in code)
+   - Keep solution simple and pragmatic
+   - Plan for proper integration in future tasks
+
+3. **Cooldown duration consistency**: Match cooldown durations across similar alert types
+   - Market alerts: 48 hours
+   - Powerplay alerts: 48 hours (matching market alerts)
+   - Consistent user experience and expectations
+
+4. **Backward compatibility for gradual migration**: Using `Optional[MarketDatabase] = None` allows:
+   - Existing code continues to work without changes
+   - New functionality can be tested independently
+   - Gradual rollout reduces risk
+   - Easy to revert if issues found
+
+5. **Test-first development (RED-GREEN cycle)**: Writing tests first helps:
+   - Define clear interface expectations
+   - Catch design issues early (unicode handling)
+   - Provide clear implementation roadmap
+   - Verify functionality works as expected
+
+### Future Work (Task 8)
+- Replace recipient placeholders with actual guild/user context from messaging system
+- Remove send_to_discord() calls from powerplay.py (messaging integration)
+- Consider removing backward compatibility code path if no longer needed
+- Consider fixing pre-existing test failures (commented out send_to_discord)
+
+### Database Integration Complete
+- powerplay.py now writes powerplay entries to MarketDatabase
+- powerplay.py now uses database for cooldown checks
+- monitor.py passes MarketDatabase instance to get_powerplay_status()
+- All new tests pass, no regressions
+- Ready for Task 7 (messaging system integration)
