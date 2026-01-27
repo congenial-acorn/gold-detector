@@ -307,7 +307,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 4. Integrate MarketDatabase into monitor.py (TDD - GREEN phase)
+### - [x] 4. Integrate MarketDatabase into monitor.py (TDD - GREEN phase)
 
 **What to do**:
 - Modify `gold_detector/monitor.py`:
