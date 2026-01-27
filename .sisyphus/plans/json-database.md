@@ -351,7 +351,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 5. Write powerplay.py Integration Tests (TDD - RED phase)
+### - [x] 5. Write powerplay.py Integration Tests (TDD - RED phase)
 
 **What to do**:
 - Update `tests/test_powerplay.py` with new tests:
