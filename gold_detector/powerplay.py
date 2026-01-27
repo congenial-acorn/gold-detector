@@ -136,32 +136,12 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
                     )
                     continue
                 masked_links = mask_commodity_links(commodity_url)
-                message = (
-                    f"{system_name} is a {fields['power']} {status_text} system.\n"
-                    f"You can earn merits by selling for large profit in these acquisition systems: {masked_links}"
+                logger.info(
+                    "Powerplay opportunity: %s is a %s %s system with acquisition systems nearby",
+                    system_name,
+                    fields['power'],
+                    status_text,
                 )
-                
-                if market_db:
-                    # Use 48 hour cooldown for powerplay alerts (same as market alerts)
-                    cooldown_seconds = 48 * 3600
-                    if market_db.check_cooldown(
-                        system_name=system_name or "",
-                        station_name=system_name or "",  # Use system_name as station placeholder
-                        metal="powerplay",  # Use "powerplay" as metal placeholder
-                        recipient_type="powerplay",
-                        recipient_id="default",
-                        cooldown_seconds=cooldown_seconds,
-                    ):
-                        send_to_discord(message)
-                        market_db.mark_sent(
-                            system_name=system_name or "",
-                            station_name=system_name or "",
-                            metal="powerplay",
-                            recipient_type="powerplay",
-                            recipient_id="default",
-                        )
-                else:
-                    send_to_discord(message)
                     
             elif status_text == "Stronghold":
                 commodity_url = assemble_commodity_links(
@@ -169,37 +149,17 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
                 )
                 if not commodity_url:
                     logger.debug(
-                        "No commodity links found for Fortified system %s",
+                        "No commodity links found for Stronghold system %s",
                         system_name or system_url,
                     )
                     continue
                 masked_links = mask_commodity_links(commodity_url)
-                message = (
-                    f"{system_name} is a {fields['power']} {status_text} system.\n"
-                    f"You can earn merits by selling for large profit: {masked_links}"
+                logger.info(
+                    "Powerplay opportunity: %s is a %s %s system",
+                    system_name,
+                    fields['power'],
+                    status_text,
                 )
-                
-                if market_db:
-                    # Use 48 hour cooldown for powerplay alerts (same as market alerts)
-                    cooldown_seconds = 48 * 3600
-                    if market_db.check_cooldown(
-                        system_name=system_name or "",
-                        station_name=system_name or "",  # Use system_name as station placeholder
-                        metal="powerplay",  # Use "powerplay" as metal placeholder
-                        recipient_type="powerplay",
-                        recipient_id="default",
-                        cooldown_seconds=cooldown_seconds,
-                    ):
-                        send_to_discord(message)
-                        market_db.mark_sent(
-                            system_name=system_name or "",
-                            station_name=system_name or "",
-                            metal="powerplay",
-                            recipient_type="powerplay",
-                            recipient_id="default",
-                        )
-                else:
-                    send_to_discord(message)
 
             #send_to_discord(msg)
         except Exception as exc:  # noqa: BLE001

@@ -31,6 +31,7 @@ def _pp_html(status: str, percent: str = "51.8%"):
 
 
 def test_powerplay_fortified_builds_links(monkeypatch):
+    """Test that powerplay no longer calls send_to_discord (database-driven dispatch)."""
     calls = []
 
     monkeypatch.setattr(powerplay, "send_to_discord", lambda msg: calls.append(msg))
@@ -41,14 +42,11 @@ def test_powerplay_fortified_builds_links(monkeypatch):
     systems = [["https://inara.cz/elite/starsystem/345798/", "Gold", "Palladium"]]
     powerplay.get_powerplay_status(systems)
 
-    assert len(calls) == 2  # Fortified alert + info message
-    assert "Fortified" in calls[0]
-    assert "Sol" in calls[0]
-    assert "pa1%5B%5D=42" in calls[0] and "pa1%5B%5D=45" in calls[0]
-    assert "pi11=20" in calls[0]  # distance for Fortified branch
+    assert len(calls) == 0
 
 
 def test_powerplay_stronghold_uses_distance_30(monkeypatch):
+    """Test that powerplay no longer calls send_to_discord (database-driven dispatch)."""
     calls = []
 
     monkeypatch.setattr(powerplay, "send_to_discord", lambda msg: calls.append(msg))
@@ -59,11 +57,7 @@ def test_powerplay_stronghold_uses_distance_30(monkeypatch):
     systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
     powerplay.get_powerplay_status(systems)
 
-    assert len(calls) == 2  # Stronghold alert + info message
-    assert "Stronghold" in calls[0]
-    assert "pa1%5B%5D=42" in calls[0]
-    assert "pa1%5B%5D=45" not in calls[0]
-    assert "pi11=30" in calls[0]  # distance for Stronghold branch
+    assert len(calls) == 0
 
 
 def test_get_powerplay_status_writes_to_database(monkeypatch):
@@ -97,14 +91,13 @@ def test_get_powerplay_status_writes_to_database(monkeypatch):
 
 
 def test_get_powerplay_status_uses_database_for_cooldowns(monkeypatch):
-    """Test that get_powerplay_status uses database for cooldown checks."""
+    """Test that get_powerplay_status writes to database but does NOT call send_to_discord."""
     from unittest.mock import Mock
 
     from gold_detector.market_database import MarketDatabase
 
-    # Create mock database
     mock_db = Mock(spec=MarketDatabase)
-    mock_db.check_cooldown.return_value = True  # Allow sending
+    mock_db.check_cooldown.return_value = True
 
     mock_send = Mock()
     monkeypatch.setattr(powerplay, "send_to_discord", mock_send)
@@ -115,32 +108,21 @@ def test_get_powerplay_status_uses_database_for_cooldowns(monkeypatch):
     systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
-    # Verify check_cooldown called before send_to_discord
-    mock_db.check_cooldown.assert_called_once()
-    call_args = mock_db.check_cooldown.call_args
-
-    # Verify cooldown parameters
+    mock_send.assert_not_called()
+    
+    mock_db.write_powerplay_entry.assert_called_once()
+    call_args = mock_db.write_powerplay_entry.call_args
     assert call_args[1]["system_name"] == "Sol"
-    assert "cooldown_seconds" in call_args[1]
-
-    # Verify mark_sent called after sending
-    mock_db.mark_sent.assert_called_once()
-    mark_args = mock_db.mark_sent.call_args
-    assert mark_args[1]["system_name"] == "Sol"
-
-    # Verify message was sent
-    assert mock_send.call_count == 1
 
 
 def test_get_powerplay_status_respects_database_cooldown(monkeypatch):
-    """Test that get_powerplay_status respects database cooldown and doesn't send when cooldown active."""
+    """Test that get_powerplay_status writes to database regardless of cooldown (dispatch handles cooldown)."""
     from unittest.mock import Mock
 
     from gold_detector.market_database import MarketDatabase
 
-    # Create mock database
     mock_db = Mock(spec=MarketDatabase)
-    mock_db.check_cooldown.return_value = False  # Cooldown still active
+    mock_db.check_cooldown.return_value = False
 
     mock_send = Mock()
     monkeypatch.setattr(powerplay, "send_to_discord", mock_send)
@@ -151,11 +133,8 @@ def test_get_powerplay_status_respects_database_cooldown(monkeypatch):
     systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
-    # Verify check_cooldown was called
-    mock_db.check_cooldown.assert_called_once()
-
-    # Verify message was NOT sent
-    assert mock_send.call_count == 0
-
-    # Verify mark_sent was NOT called
-    mock_db.mark_sent.assert_not_called()
+    mock_send.assert_not_called()
+    
+    mock_db.write_powerplay_entry.assert_called_once()
+    call_args = mock_db.write_powerplay_entry.call_args
+    assert call_args[1]["system_name"] == "Sol"

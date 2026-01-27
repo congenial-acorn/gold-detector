@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from pathlib import Path
 
 import discord
 from discord import app_commands
@@ -11,6 +12,7 @@ from gold_detector.commands.preferences import register_preference_commands
 from gold_detector.commands.server_settings import register_server_settings_commands
 from gold_detector.config import Settings, configure_logging
 from gold_detector.gold_runner import GoldRunner
+from gold_detector.market_database import MarketDatabase
 from gold_detector.messaging import DiscordMessenger
 from gold_detector.services import (
     CooldownService,
@@ -45,6 +47,9 @@ user_cooldowns = CooldownService(
     paths["user_cooldowns"], ttl_seconds=settings.cooldown_seconds
 )
 
+db_path = Path("market_database.json")
+market_db = MarketDatabase(db_path)
+
 messenger = DiscordMessenger(
     client=client,
     settings=settings,
@@ -54,6 +59,7 @@ messenger = DiscordMessenger(
     user_cooldowns=user_cooldowns,
     subscribers=subscribers,
     logger=logger.getChild("messaging"),
+    market_db=market_db,
 )
 
 register_alert_commands(tree, subscribers, settings.help_url)

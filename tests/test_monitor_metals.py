@@ -45,6 +45,7 @@ class _FixedDateTime(datetime.datetime):
 
 
 def test_monitor_metals_respects_cooldown(monkeypatch):
+    """Test that monitor_metals no longer calls send_to_discord (database-driven dispatch)."""
     calls = []
 
     def fake_send(message: str) -> None:
@@ -71,7 +72,7 @@ def test_monitor_metals_respects_cooldown(monkeypatch):
     with pytest.raises(StopMonitoring):
         monitor.monitor_metals(["dummy"], ["Gold", "Gold"], cooldown_hours=1)
 
-    assert len(calls) == 1
+    assert len(calls) == 0
 
 
 def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
@@ -136,20 +137,15 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
 
 def test_monitor_metals_uses_database_for_cooldowns(monkeypatch, tmp_path):
     """
-    Test that monitor_metals uses MarketDatabase for cooldown checking.
+    Test that monitor_metals writes to database but does NOT call send_to_discord.
     
-    Verifies that:
-    - check_cooldown() is called before sending to Discord
-    - check_cooldown() receives correct cooldown_seconds parameter
-    - mark_sent() is called after sending to Discord
-    - recipient_type and recipient_id are passed correctly
+    With database-driven dispatch (Task 8), monitor_metals only writes to the database.
+    Dispatch happens via messenger.dispatch_from_database() after the scan completes.
     """
     from unittest.mock import Mock
     from gold_detector.market_database import MarketDatabase
 
-    # Create mock database
     mock_db = Mock(spec=MarketDatabase)
-    # Simulate cooldown not expired (allow sending)
     mock_db.check_cooldown.return_value = True
 
     class FakeResponse:
@@ -172,7 +168,6 @@ def test_monitor_metals_uses_database_for_cooldowns(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
 
     with pytest.raises(StopMonitoring):
-        # This will fail because monitor_metals doesn't accept market_db yet
         monitor.monitor_metals(
             ["dummy"],
             ["Gold"],
@@ -180,28 +175,13 @@ def test_monitor_metals_uses_database_for_cooldowns(monkeypatch, tmp_path):
             market_db=mock_db,
         )
 
-    # Verify cooldown check was called before sending
-    mock_db.check_cooldown.assert_called_once()
-    call_args = mock_db.check_cooldown.call_args
+    send_mock.assert_not_called()
+    
+    mock_db.write_market_entry.assert_called_once()
+    call_args = mock_db.write_market_entry.call_args
     assert call_args[1]["system_name"] == "Example System"
     assert call_args[1]["station_name"] == "Example Station"
     assert call_args[1]["metal"] == "Gold"
-    assert call_args[1]["cooldown_seconds"] == 3600  # 1 hour in seconds
-    # Should have recipient_type and recipient_id
-    assert "recipient_type" in call_args[1]
-    assert "recipient_id" in call_args[1]
-
-    # Verify send was called
-    send_mock.assert_called_once()
-
-    # Verify mark_sent was called after sending
-    mock_db.mark_sent.assert_called_once()
-    mark_args = mock_db.mark_sent.call_args
-    assert mark_args[1]["system_name"] == "Example System"
-    assert mark_args[1]["station_name"] == "Example Station"
-    assert mark_args[1]["metal"] == "Gold"
-    assert "recipient_type" in mark_args[1]
-    assert "recipient_id" in mark_args[1]
 
 
 def test_monitor_metals_respects_database_cooldown(monkeypatch, tmp_path):
