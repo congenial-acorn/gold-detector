@@ -270,7 +270,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 3. Write monitor.py Integration Tests (TDD - RED phase)
+### - [x] 3. Write monitor.py Integration Tests (TDD - RED phase)
 
 **What to do**:
 - Update `tests/test_monitor_metals.py` with new tests:
