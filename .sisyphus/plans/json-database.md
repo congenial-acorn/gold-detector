@@ -425,7 +425,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 7. Write messaging.py Integration Tests (TDD - RED phase)
+### - [x] 7. Write messaging.py Integration Tests (TDD - RED phase)
 
 **What to do**:
 - Update `tests/test_messaging.py` with new tests:
