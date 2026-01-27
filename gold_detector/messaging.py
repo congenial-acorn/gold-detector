@@ -4,7 +4,7 @@ import asyncio
 import logging
 import threading
 from collections import defaultdict
-from typing import TYPE_CHECKING, DefaultDict, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, DefaultDict, Optional, Set, Tuple
 
 import discord
 from discord import AllowedMentions
@@ -16,7 +16,6 @@ from .services import (
     OptOutService,
     SubscriberService,
 )
-from .utils import message_key, now
 
 if TYPE_CHECKING:
     from .market_database import MarketDatabase
@@ -425,8 +424,7 @@ class DiscordMessenger:
             powerplay = system_data["powerplay"]
             power = powerplay.get("power")
             status = powerplay.get("status")
-            progress = powerplay.get("progress")
-            
+
             if not power or not status:
                 continue
             
@@ -443,11 +441,11 @@ class DiscordMessenger:
                 )
 
     async def _dispatch_message_to_all(
-        self, 
-        content: str, 
-        all_data: dict,
+        self,
+        content: str,
+        all_data: dict[str, Any],
         is_powerplay: bool = False,
-        powerplay_system: Optional[str] = None
+        powerplay_system: Optional[str] = None,
     ) -> None:
         """
         Dispatch a single message to all guilds and DM subscribers.

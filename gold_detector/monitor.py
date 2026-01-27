@@ -8,8 +8,7 @@ from typing import Dict, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
 
-from gold_detector.alert_helpers import assemble_hidden_market_messages
-from gold_detector.emitter import emit_loop_done, send_to_discord
+from gold_detector.emitter import emit_loop_done
 from gold_detector.http_client import http_get
 from gold_detector.inara_client import get_station_market_urls, get_station_type
 from gold_detector.market_database import MarketDatabase

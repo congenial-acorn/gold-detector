@@ -45,16 +45,16 @@ class _FixedDateTime(datetime.datetime):
 
 
 def test_monitor_metals_respects_cooldown(monkeypatch):
-    """Test that monitor_metals no longer calls send_to_discord (database-driven dispatch)."""
-    calls = []
+    """Test that monitor_metals writes to database and doesn't directly send messages."""
+    from unittest.mock import Mock
+    from gold_detector.market_database import MarketDatabase
 
-    def fake_send(message: str) -> None:
-        calls.append(message)
+    mock_db = Mock(spec=MarketDatabase)
+    mock_db.check_cooldown.return_value = False  # Simulate cooldown active
 
     class FakeResponse:
         text = HTML_TEMPLATE
 
-    monkeypatch.setattr(monitor, "send_to_discord", fake_send)
     monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
     monkeypatch.setattr(
         monitor,
@@ -70,15 +70,18 @@ def test_monitor_metals_respects_cooldown(monkeypatch):
     monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
 
     with pytest.raises(StopMonitoring):
-        monitor.monitor_metals(["dummy"], ["Gold", "Gold"], cooldown_hours=1)
+        monitor.monitor_metals(["dummy"], ["Gold", "Gold"], cooldown_hours=1, market_db=mock_db)
 
-    assert len(calls) == 0
+    # Verify database methods were called
+    mock_db.begin_scan.assert_called_once()
+    mock_db.check_cooldown.assert_called()  # Called twice (once for each "Gold")
+    mock_db.mark_sent.assert_not_called()  # Should NOT mark sent if cooldown active
 
 
 def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     """
     Test that monitor_metals writes market entries to MarketDatabase.
-    
+
     Verifies that:
     - begin_scan() is called at loop start
     - write_market_entry() is called when market detected with correct params
@@ -87,13 +90,12 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     from unittest.mock import Mock
     from gold_detector.market_database import MarketDatabase
 
-    # Create mock database
     mock_db = Mock(spec=MarketDatabase)
+    mock_db.check_cooldown.return_value = True  # Allow sending
 
     class FakeResponse:
         text = HTML_TEMPLATE
 
-    monkeypatch.setattr(monitor, "send_to_discord", Mock())
     monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
     monkeypatch.setattr(
         monitor,
@@ -109,7 +111,6 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
 
     with pytest.raises(StopMonitoring):
-        # This will fail because monitor_metals doesn't accept market_db yet
         monitor.monitor_metals(
             ["dummy"],
             ["Gold"],
@@ -137,22 +138,20 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
 
 def test_monitor_metals_uses_database_for_cooldowns(monkeypatch, tmp_path):
     """
-    Test that monitor_metals writes to database but does NOT call send_to_discord.
-    
-    With database-driven dispatch (Task 8), monitor_metals only writes to the database.
-    Dispatch happens via messenger.dispatch_from_database() after the scan completes.
+    Test that monitor_metals writes to database when cooldown allows.
+
+    With database-driven dispatch, monitor_metals only writes to database.
+    Dispatch happens via messenger.dispatch_from_database() after scan completes.
     """
     from unittest.mock import Mock
     from gold_detector.market_database import MarketDatabase
 
     mock_db = Mock(spec=MarketDatabase)
-    mock_db.check_cooldown.return_value = True
+    mock_db.check_cooldown.return_value = True  # Allow sending
 
     class FakeResponse:
         text = HTML_TEMPLATE
 
-    send_mock = Mock()
-    monkeypatch.setattr(monitor, "send_to_discord", send_mock)
     monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
     monkeypatch.setattr(
         monitor,
@@ -175,9 +174,8 @@ def test_monitor_metals_uses_database_for_cooldowns(monkeypatch, tmp_path):
             market_db=mock_db,
         )
 
-    send_mock.assert_not_called()
-    
     mock_db.write_market_entry.assert_called_once()
+    mock_db.mark_sent.assert_called_once()
     call_args = mock_db.write_market_entry.call_args
     assert call_args[1]["system_name"] == "Example System"
     assert call_args[1]["station_name"] == "Example Station"
@@ -187,7 +185,7 @@ def test_monitor_metals_uses_database_for_cooldowns(monkeypatch, tmp_path):
 def test_monitor_metals_respects_database_cooldown(monkeypatch, tmp_path):
     """
     Test that monitor_metals respects cooldown from MarketDatabase.
-    
+
     Verifies that:
     - When check_cooldown() returns False, no message is sent
     - mark_sent() is NOT called when cooldown is active
@@ -195,7 +193,6 @@ def test_monitor_metals_respects_database_cooldown(monkeypatch, tmp_path):
     from unittest.mock import Mock
     from gold_detector.market_database import MarketDatabase
 
-    # Create mock database
     mock_db = Mock(spec=MarketDatabase)
     # Simulate cooldown still active (prevent sending)
     mock_db.check_cooldown.return_value = False
@@ -203,8 +200,6 @@ def test_monitor_metals_respects_database_cooldown(monkeypatch, tmp_path):
     class FakeResponse:
         text = HTML_TEMPLATE
 
-    send_mock = Mock()
-    monkeypatch.setattr(monitor, "send_to_discord", send_mock)
     monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
     monkeypatch.setattr(
         monitor,
@@ -220,7 +215,6 @@ def test_monitor_metals_respects_database_cooldown(monkeypatch, tmp_path):
     monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
 
     with pytest.raises(StopMonitoring):
-        # This will fail because monitor_metals doesn't accept market_db yet
         monitor.monitor_metals(
             ["dummy"],
             ["Gold"],
@@ -230,9 +224,6 @@ def test_monitor_metals_respects_database_cooldown(monkeypatch, tmp_path):
 
     # Verify cooldown check was called
     mock_db.check_cooldown.assert_called_once()
-
-    # Verify send was NOT called (cooldown active)
-    send_mock.assert_not_called()
 
     # Verify mark_sent was NOT called (cooldown active)
     mock_db.mark_sent.assert_not_called()

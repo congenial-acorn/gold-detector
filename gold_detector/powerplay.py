@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from bs4 import BeautifulSoup
 
@@ -8,16 +8,14 @@ from .alert_helpers import (
     GOLD_NUM,
     PALLADIUM_NUM,
     assemble_commodity_links,
-    mask_commodity_links,
 )
-from .emitter import send_to_discord
 from .http_client import http_get
 from .market_database import MarketDatabase
 
 logger = logging.getLogger("gold.powerplay")
 
 
-def _parse_powerplay_fields(block) -> dict:
+def _parse_powerplay_fields(block) -> dict[str, Any]:
     power_link = block.find("a", href=re.compile(r"/elite/power/\d+/?"))
     power_name = power_link.get_text(strip=True) if power_link else None
 
@@ -135,7 +133,6 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
                         system_name or system_url,
                     )
                     continue
-                masked_links = mask_commodity_links(commodity_url)
                 logger.info(
                     "Powerplay opportunity: %s is a %s %s system with acquisition systems nearby",
                     system_name,
@@ -153,15 +150,12 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
                         system_name or system_url,
                     )
                     continue
-                masked_links = mask_commodity_links(commodity_url)
                 logger.info(
                     "Powerplay opportunity: %s is a %s %s system",
                     system_name,
                     fields['power'],
                     status_text,
                 )
-
-            #send_to_discord(msg)
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "Failed to fetch Powerplay status from %s: %s",
