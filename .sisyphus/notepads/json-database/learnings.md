@@ -1081,5 +1081,81 @@ This decouples data collection (monitor/powerplay) from message dispatch (messag
 - All 53 tests passing
 - LSP diagnostics show only pre-existing warnings
 - Preserved existing message format using assemble_hidden_market_messages()
-- Maintained backward compatibility with existing preference filtering
+   - Maintained backward compatibility with existing preference filtering
+
+## Task 10: Integration Test & Final Verification
+
+### Cleanup Performed
+
+1. **Removed Commented-Out Code**:
+   - `#send_to_discord(msg)` in powerplay.py (line 164)
+   - This was leftover from when direct send_to_discord was replaced with database-driven dispatch
+
+2. **Removed Unused Imports**:
+   - `message_key, now` from messaging.py (line 19)
+   - `send_to_discord` from powerplay.py (line 13)
+   - `assemble_hidden_market_messages, send_to_discord` from monitor.py (lines 11-12)
+   - `mask_commodity_links` from powerplay.py (line 11)
+
+3. **Removed Unused Variables**:
+   - `progress` variable in messaging.py (line 428) - extracted but never used in message building
+   - `masked_links` variable in powerplay.py (lines 138, 156) - created but never used
+
+4. **Fixed Type Hints**:
+   - Added `Any` to imports in powerplay.py and messaging.py
+   - Changed `-> dict:` to `-> dict[str, Any]:` for better type safety
+
+5. **Updated Tests**:
+   - Fixed test_powerplay.py tests that were patching `send_to_discord` (no longer in module)
+   - Fixed test_monitor_metals.py tests that were patching `send_to_discord` (no longer in module)
+   - Tests now verify database write operations instead of direct Discord sends
+
+### Verification Results
+
+✅ **pytest tests/ -v**: All 53 tests PASS
+- No regressions in existing tests
+- All new tests pass with updated assertions
+- Test coverage maintained across all modules
+
+✅ **mypy gold_detector/**: No NEW type errors
+- Pre-existing errors remain (unrelated to this work)
+  - monitor.py: BeautifulSoup type hints (pre-existing)
+  - powerplay.py: _parse_powerplay_fields return type (pre-existing)
+  - services.py: dict type incompatibilities (pre-existing)
+- New type hints properly added where needed
+
+✅ **ruff check gold_detector/**: No NEW lint errors
+- Removed 7 unused imports and variables
+- Remaining 2 errors are pre-existing (http_client.py, services.py)
+- No new lint errors introduced
+
+### Code Quality Verification
+
+- **No print() statements** in new code
+- **No TODO comments** in new code
+- **No commented-out code** left behind
+- **Consistent coding style** maintained with existing codebase
+- **Type hints** are appropriate and consistent with project conventions
+
+### Key Learnings
+
+1. **Cleanup is part of TDD**: After implementing all features, code review and cleanup is essential
+2. **Tests document behavior**: When refactoring code, tests guide the expected interface changes
+3. **LSP warnings are context**: Pre-existing LSP errors should be documented but not necessarily fixed
+4. **Test updates are part of refactor**: When removing code paths, tests must also be updated
+5. **Atomic cleanup matters**: Each small cleanup (unused import, variable) contributes to overall code quality
+
+### Final Status
+
+All acceptance criteria met:
+- ✅ pytest tests/ -v → ALL PASS (53/53)
+- ✅ mypy gold_detector/ → No new errors
+- ✅ ruff check gold_detector/ → No new errors
+- ✅ No print() statements left
+- ✅ No TODO comments in new code
+- ✅ No commented-out code left
+- ✅ Consistent coding style
+- ✅ Appropriate type hints
+
+Database refactor is complete and verified ready for production use.
 
