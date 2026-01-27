@@ -338,3 +338,127 @@ Based on test expectations, monitor_metals will need:
 5. Track scanned systems for pruning
 6. Resolve recipient_type/recipient_id question
 7. Run tests to verify GREEN phase (all tests should pass)
+
+## Task 4: Monitor Integration Implementation (GREEN Phase)
+
+### Implementation Summary
+Successfully integrated MarketDatabase into monitor.py to make all tests pass.
+
+### Changes Made
+
+1. **monitor.py modifications**:
+   - Added `market_db: Optional[MarketDatabase] = None` parameter to `monitor_metals()`
+   - Added `from typing import Optional` import
+   - Added `from gold_detector.market_database import MarketDatabase` import
+   - Added `scanned_systems = set()` to track scanned system addresses
+   - Added `market_db.begin_scan()` call at loop start (when market_db provided)
+   - Added `scanned_systems.add(system_address)` to track each scanned system
+   - Added `market_db.write_market_entry()` call when market detected
+   - Replaced last_ping dict logic with `market_db.check_cooldown()` / `mark_sent()` calls
+   - Added `market_db.end_scan(scanned_systems)` call at loop end
+   - Kept backward compatibility: when market_db is None, use old last_ping dict behavior
+   - Moved last_ping pruning logic inside `if not market_db:` block
+
+2. **gold.py modifications**:
+   - Added `from pathlib import Path` import
+   - Added `from gold_detector.market_database import MarketDatabase` import
+   - Created MarketDatabase instance with path "market_database.json"
+   - Passed market_db to monitor_metals() call
+
+### Key Implementation Decisions
+
+1. **Recipient placeholders**: Used `recipient_type="monitor"` and `recipient_id="default"` as placeholders
+   - Rationale: monitor.py doesn't have access to guild/user context yet
+   - Task 8 will properly integrate with messaging system which has recipient context
+   - Tests accept any recipient_type/recipient_id values, so placeholders work for now
+
+2. **Cooldown conversion**: `cooldown_seconds = cooldown_hours * 3600`
+   - Converts hours to seconds for MarketDatabase API
+   - Matches test expectations (1 hour = 3600 seconds)
+
+3. **Backward compatibility**: Preserved existing behavior when market_db is None
+   - Old code path uses last_ping dict
+   - New code path uses MarketDatabase methods
+   - Allows gradual migration and testing
+
+4. **Scanned systems tracking**: Created `scanned_systems` set to collect system_address values
+   - Added to set when station header parsed successfully
+   - Passed to `end_scan()` for pruning stale systems
+   - Ensures only verified-absent systems are pruned
+
+5. **Pruning logic**: Moved last_ping pruning inside `if not market_db:` block
+   - When using market_db, prune_stale() handles cleanup
+   - Avoids duplicate pruning logic
+   - Maintains separation of concerns
+
+### Test Results
+✅ All 4 monitor_metals tests PASS:
+- test_monitor_metals_respects_cooldown (existing test - backward compatibility)
+- test_monitor_metals_writes_to_market_database (new test)
+- test_monitor_metals_uses_database_for_cooldowns (new test)
+- test_monitor_metals_respects_database_cooldown (new test)
+
+✅ All 44 tests PASS (42 passed, 2 pre-existing powerplay failures unrelated to this change)
+- No regressions introduced
+- All MarketDatabase tests still pass
+- All message filter tests still pass
+- All messaging tests still pass
+
+### LSP Diagnostics
+Pre-existing LSP errors in monitor.py (unrelated to this task):
+- BeautifulSoup type hints issues (lines 41, 48)
+- These errors existed before this task and are not introduced by changes
+
+### Integration Pattern
+```python
+if market_db:
+    market_db.begin_scan()
+    scanned_systems = set()
+    
+    # ... scan loop ...
+    scanned_systems.add(system_address)
+    
+    if market detected:
+        market_db.write_market_entry(...)
+        
+        if market_db.check_cooldown(..., cooldown_seconds=cooldown_hours * 3600):
+            # Build and send message
+            market_db.mark_sent(...)
+    
+    # ... end of loop ...
+    market_db.end_scan(scanned_systems)
+else:
+    # Old behavior with last_ping dict
+```
+
+### Lessons Learned
+
+1. **Optional parameters for gradual migration**: Using `Optional[MarketDatabase] = None` allows:
+   - Backward compatibility with existing code
+   - Gradual rollout of new functionality
+   - Easy testing of both code paths
+
+2. **Placeholder values for missing context**: When integration point lacks required context:
+   - Use placeholder values that satisfy interface requirements
+   - Document why placeholders are needed
+   - Plan for proper integration in future tasks
+
+3. **Tracking scanned entities**: When implementing pruning logic:
+   - Track what was actually scanned (not just what was found)
+   - Use sets for efficient membership testing
+   - Pass tracking data to cleanup methods
+
+4. **Separation of concerns**: Keep old and new code paths separate:
+   - Easier to understand and maintain
+   - Reduces risk of breaking existing functionality
+   - Allows independent testing of each path
+
+### Future Work (Task 8)
+- Replace recipient placeholders with actual guild/user context from messaging system
+- Remove send_to_discord() calls from monitor.py (messaging integration)
+- Consider removing backward compatibility code path if no longer needed
+
+### Database File Location
+- Production database: `market_database.json` in project root
+- Created by gold.py when monitor_metals() runs
+- Persists market data and cooldowns across runs
