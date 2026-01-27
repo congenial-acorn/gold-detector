@@ -178,7 +178,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 2. Implement MarketDatabase Class (TDD - GREEN phase)
+### - [x] 2. Implement MarketDatabase Class (TDD - GREEN phase)
 
 **What to do**:
 - Create `gold_detector/market_database.py`
