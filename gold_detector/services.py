@@ -389,80 +389,9 @@ class OptOutService:
             return int(guild_id) in self._opt_out
 
 
-class CooldownService:
-    def __init__(self, path: Path, *, ttl_seconds: int):
-        self.store = JsonStore(path)
-        self.ttl_seconds = ttl_seconds
-        self._lock = threading.Lock()
-        self._data: Dict[int, Dict[int, float]] = self._load()
-        self._prune_locked()
-
-    def _load(self) -> Dict[int, Dict[int, float]]:
-        try:
-            raw = self.store.load({})
-            return {
-                int(g): {int(mid): float(ts) for mid, ts in inner.items()}
-                for g, inner in raw.items()
-            }
-        except Exception:
-            return {}
-
-    def _prune_locked(self) -> None:
-        cutoff = now() - self.ttl_seconds
-        dead_guilds = []
-        for gid, inner in self._data.items():
-            stale = [mid for mid, ts in inner.items() if ts < cutoff]
-            for mid in stale:
-                del inner[mid]
-            if not inner:
-                dead_guilds.append(gid)
-        for gid in dead_guilds:
-            del self._data[gid]
-
-    def _persist_locked(self) -> None:
-        serial = {
-            str(g): {str(mid): ts for mid, ts in inner.items()}
-            for g, inner in self._data.items()
-        }
-        self.store.save(serial)
-
-    def should_send(
-        self,
-        scope_id: int,
-        message_id: int,
-        ts: float,
-        *,
-        update_on_allow: bool = True,
-    ) -> Tuple[bool, Optional[float], Optional[float]]:
-        with self._lock:
-            bucket = self._data.setdefault(scope_id, {})
-            prev = bucket.get(message_id)
-            if prev is None or ts - prev >= self.ttl_seconds:
-                if update_on_allow:
-                    bucket[message_id] = ts
-                    self._persist_locked()
-                return True, prev, None
-
-            remaining = self.ttl_seconds - (ts - prev)
-            return False, prev, remaining
-
-    def mark_sent(self, scope_id: int, message_id: int, ts: float) -> None:
-        with self._lock:
-            bucket = self._data.setdefault(scope_id, {})
-            bucket[message_id] = ts
-            self._persist_locked()
-
-    def snapshot(self) -> None:
-        with self._lock:
-            self._prune_locked()
-            self._persist_locked()
-
-
 def default_paths() -> dict[str, Path]:
     return {
         "guild_prefs": PROJECT_ROOT / "guild_prefs.json",
         "subs": PROJECT_ROOT / "dm_subscribers.json",
         "guild_optout": PROJECT_ROOT / "guild_optout.json",
-        "server_cooldowns": PROJECT_ROOT / "server_cooldowns.json",
-        "user_cooldowns": PROJECT_ROOT / "user_cooldowns.json",
     }

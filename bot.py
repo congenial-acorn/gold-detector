@@ -15,7 +15,6 @@ from gold_detector.gold_runner import GoldRunner
 from gold_detector.market_database import MarketDatabase
 from gold_detector.messaging import DiscordMessenger
 from gold_detector.services import (
-    CooldownService,
     GuildPreferencesService,
     OptOutService,
     SubscriberService,
@@ -40,12 +39,6 @@ guild_prefs = GuildPreferencesService(
 )
 subscribers = SubscriberService(paths["subs"])
 opt_outs = OptOutService(paths["guild_optout"])
-server_cooldowns = CooldownService(
-    paths["server_cooldowns"], ttl_seconds=settings.cooldown_seconds
-)
-user_cooldowns = CooldownService(
-    paths["user_cooldowns"], ttl_seconds=settings.cooldown_seconds
-)
 
 db_path = Path("market_database.json")
 market_db = MarketDatabase(db_path)
@@ -55,8 +48,6 @@ messenger = DiscordMessenger(
     settings=settings,
     guild_prefs=guild_prefs,
     opt_outs=opt_outs,
-    server_cooldowns=server_cooldowns,
-    user_cooldowns=user_cooldowns,
     subscribers=subscribers,
     logger=logger.getChild("messaging"),
     market_db=market_db,
@@ -102,7 +93,6 @@ async def on_ready():
     _background_started = True
     try:
         await messenger.start_background_tasks()
-        asyncio.create_task(messenger.snapshot_cooldowns())
 
         try:
             await tree.sync()
