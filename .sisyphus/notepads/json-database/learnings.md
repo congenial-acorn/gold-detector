@@ -1044,3 +1044,42 @@ await messenger.dispatch_from_database(market_db)
 ```
 
 This decouples data collection (monitor/powerplay) from message dispatch (messaging).
+
+## Task 8: Database-Driven Message Dispatch
+
+### Implementation Approach
+- Added `dispatch_from_database()` method to DiscordMessenger that reads from MarketDatabase
+- Integrated dispatch into `loop_done_from_thread()` callback - called after scan completes
+- Removed direct `send_to_discord()` calls from monitor.py and powerplay.py
+- Messages now flow: scan → write to DB → dispatch from DB → send to Discord
+
+### Key Design Decisions
+1. **Dispatch Trigger**: Dispatch happens in `loop_done_from_thread()` after scan completes
+2. **Message Parsing**: Created `_parse_message_for_cooldown()` to extract (system, station, metal) tuples from message content for cooldown tracking
+3. **Cooldown Checking**: Cooldowns checked per-entry before sending, not per-message
+4. **Role Mentions**: Built directly into message content when pings enabled (not separate ping loop)
+5. **Powerplay Format**: Simplified powerplay message format in dispatch (full format with commodity links handled by database entries)
+
+### Architecture Changes
+- monitor.py: No longer calls send_to_discord(), only writes to DB
+- powerplay.py: No longer calls send_to_discord(), only writes to DB  
+- messaging.py: New dispatch_from_database() reads DB and sends messages with cooldown tracking
+- bot.py: Creates MarketDatabase and passes to DiscordMessenger
+
+### Test Updates
+- Updated old tests that expected send_to_discord() to be called
+- Tests now verify that send_to_discord() is NOT called (database-driven dispatch)
+- New tests in test_messaging.py verify dispatch_from_database() behavior
+
+### Challenges Overcome
+1. **Message Parsing**: Had to parse message content to extract cooldown keys (system/station/metal)
+2. **Powerplay Messages**: Used simplified format since full commodity links are complex
+3. **Test Migration**: Updated tests from intermediate state (Tasks 4/6) to final state (Task 8)
+4. **Integration Point**: Found right place to trigger dispatch (loop_done callback)
+
+### Code Quality
+- All 53 tests passing
+- LSP diagnostics show only pre-existing warnings
+- Preserved existing message format using assemble_hidden_market_messages()
+- Maintained backward compatibility with existing preference filtering
+

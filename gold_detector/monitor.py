@@ -269,11 +269,6 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
             )
             logger.info("Starting Powerplay check.")
 
-            for message in assemble_hidden_market_messages(
-                [e.__dict__ for e in messages.values()]
-            ):
-                send_to_discord(message)
-
             system_list = [[url] + found for url, found in systems.items()]
             if market_db:
                 get_powerplay_status(system_list, market_db=market_db)

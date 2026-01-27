@@ -466,7 +466,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 8. Integrate MarketDatabase into messaging.py (TDD - GREEN phase)
+### - [x] 8. Integrate MarketDatabase into messaging.py (TDD - GREEN phase)
 
 **What to do**:
 - Modify `gold_detector/messaging.py`:
