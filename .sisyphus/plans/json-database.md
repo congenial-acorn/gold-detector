@@ -521,7 +521,7 @@ Task 10 (integration test & verification)
 
 ---
 
-### - [ ] 9. Remove Old Cooldown Infrastructure
+### - [x] 9. Remove Old Cooldown Infrastructure
 
 **What to do**:
 - Delete files:

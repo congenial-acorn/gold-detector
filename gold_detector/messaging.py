@@ -12,7 +12,6 @@ from discord import AllowedMentions
 from .config import Settings
 from .message_filters import filter_message_for_preferences
 from .services import (
-    CooldownService,
     GuildPreferencesService,
     OptOutService,
     SubscriberService,
@@ -30,8 +29,6 @@ class DiscordMessenger:
         settings: Settings,
         guild_prefs: GuildPreferencesService,
         opt_outs: OptOutService,
-        server_cooldowns: CooldownService,
-        user_cooldowns: CooldownService,
         subscribers: SubscriberService,
         logger: Optional[logging.Logger] = None,
         market_db: Optional[MarketDatabase] = None,
@@ -40,8 +37,6 @@ class DiscordMessenger:
         self.settings = settings
         self.guild_prefs = guild_prefs
         self.opt_outs = opt_outs
-        self.server_cooldowns = server_cooldowns
-        self.user_cooldowns = user_cooldowns
         self.subscribers = subscribers
         self.logger = logger or logging.getLogger("bot.messaging")
         self.market_db = market_db
@@ -210,25 +205,10 @@ class DiscordMessenger:
                 )
                 return
 
-            ts = now()
-            message_id = message_key(filtered)
-            allow, prev, remaining = self.user_cooldowns.should_send(
-                uid, message_id, ts, update_on_allow=False
-            )
-            if not allow:
-                self.logger.debug(
-                    "[DM] Skipping user %s; %.2fh remaining for msg %s",
-                    uid,
-                    (remaining or 0) / 3600,
-                    message_id,
-                )
-                return
-
             try:
                 user = await self.client.fetch_user(uid)
                 await user.send(filtered, allowed_mentions=allowed_mentions)
-                self.user_cooldowns.mark_sent(uid, message_id, ts)
-                self.logger.debug("[DM] Sent to user %s (prev=%s)", uid, prev)
+                self.logger.debug("[DM] Sent to user %s", uid)
             except discord.NotFound:
                 self.logger.info(
                     "[DM] User %s not found (deleted account?), unsubscribing", uid
@@ -340,21 +320,6 @@ class DiscordMessenger:
             )
             return False
 
-        ts = now()
-        message_id = message_key(filtered)
-        allowed, prev, remaining = self.server_cooldowns.should_send(
-            guild.id, message_id, ts
-        )
-        if not allowed:
-            hrs = (remaining or 0) / 3600
-            self.logger.debug(
-                "[%s] Cooldown active for msg %s; skipping (~%.2fh).",
-                guild.name,
-                message_id,
-                hrs,
-            )
-            return False
-
         channel = self._resolve_sendable_channel(guild)
         if not channel:
             self.logger.warning(
@@ -364,16 +329,9 @@ class DiscordMessenger:
 
         try:
             await channel.send(filtered, allowed_mentions=AllowedMentions.none())
-            if prev is None:
-                self.logger.info(
-                    "[%s] Alert sent to #%s (first time)", guild.name, channel.name
-                )
-            else:
-                self.logger.info(
-                    "[%s] Alert sent to #%s (cooldown expired)",
-                    guild.name,
-                    channel.name,
-                )
+            self.logger.info(
+                "[%s] Alert sent to #%s", guild.name, channel.name
+            )
             return True
         except discord.Forbidden as exc:
             self.logger.error(
@@ -401,12 +359,6 @@ class DiscordMessenger:
                 exc_info=True,
             )
             return False
-
-    async def snapshot_cooldowns(self, interval_seconds: int = 60) -> None:
-        while True:
-            self.server_cooldowns.snapshot()
-            self.user_cooldowns.snapshot()
-            await asyncio.sleep(interval_seconds)
 
     async def dispatch_from_database(self, market_db: MarketDatabase) -> None:
         """

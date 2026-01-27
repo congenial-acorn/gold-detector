@@ -48,8 +48,6 @@ def test_loop_done_waits_for_queue_completion():
             object(),
             object(),
             object(),
-            object(),
-            object(),
         )
 
         drain_called = asyncio.Event()
@@ -107,17 +105,13 @@ def test_dispatch_from_database_reads_entries():
         # Create mock services
         mock_guild_prefs = Mock()
         mock_opt_outs = Mock()
-        mock_server_cooldowns = Mock()
-        mock_user_cooldowns = Mock()
         mock_subscribers = Mock()
-        
+
         messenger = DiscordMessenger(
             mock_client,
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
-            mock_server_cooldowns,
-            mock_user_cooldowns,
             mock_subscribers,
         )
         
@@ -183,27 +177,23 @@ def test_dispatch_from_database_checks_cooldowns():
         mock_guild_prefs.get_preferences.return_value = {}
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
-        mock_server_cooldowns = Mock()
-        mock_user_cooldowns = Mock()
         mock_subscribers = Mock()
         mock_subscribers.all.return_value = []
-        
+
         messenger = DiscordMessenger(
             mock_client,
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
-            mock_server_cooldowns,
-            mock_user_cooldowns,
             mock_subscribers,
         )
-        
+
         # This will fail because dispatch_from_database doesn't exist yet
         try:
             await messenger.dispatch_from_database(mock_db)
         except AttributeError:
             pass  # Expected in RED phase
-        
+
         # Verify check_cooldown was called
         if mock_db.check_cooldown.called:
             call_args = mock_db.check_cooldown.call_args
@@ -269,27 +259,23 @@ def test_dispatch_from_database_marks_sent():
         mock_guild_prefs.get_preferences.return_value = {}
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
-        mock_server_cooldowns = Mock()
-        mock_user_cooldowns = Mock()
         mock_subscribers = Mock()
         mock_subscribers.all.return_value = []
-        
+
         messenger = DiscordMessenger(
             mock_client,
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
-            mock_server_cooldowns,
-            mock_user_cooldowns,
             mock_subscribers,
         )
-        
+
         # This will fail because dispatch_from_database doesn't exist yet
         try:
             await messenger.dispatch_from_database(mock_db)
         except AttributeError:
             pass  # Expected in RED phase
-        
+
         # Verify mark_sent was called after successful send
         if mock_db.mark_sent.called:
             call_args = mock_db.mark_sent.call_args
@@ -353,21 +339,17 @@ def test_dispatch_from_database_applies_preferences():
         mock_guild_prefs.get_preferences.return_value = {"commodity": ["Palladium"]}  # Filter out Gold
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
-        mock_server_cooldowns = Mock()
-        mock_user_cooldowns = Mock()
         mock_subscribers = Mock()
         mock_subscribers.all.return_value = []
-        
+
         messenger = DiscordMessenger(
             mock_client,
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
-            mock_server_cooldowns,
-            mock_user_cooldowns,
             mock_subscribers,
         )
-        
+
         # Patch filter_message_for_preferences to verify it's called
         with patch("gold_detector.messaging.filter_message_for_preferences") as mock_filter:
             mock_filter.return_value = None  # Filter out message
@@ -444,21 +426,17 @@ def test_dispatch_from_database_includes_role_mentions():
         mock_guild_prefs.pings_enabled.return_value = True  # Pings enabled
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
-        mock_server_cooldowns = Mock()
-        mock_user_cooldowns = Mock()
         mock_subscribers = Mock()
         mock_subscribers.all.return_value = []
-        
+
         messenger = DiscordMessenger(
             mock_client,
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
-            mock_server_cooldowns,
-            mock_user_cooldowns,
             mock_subscribers,
         )
-        
+
         # This will fail because dispatch_from_database doesn't exist yet
         try:
             await messenger.dispatch_from_database(mock_db)
@@ -521,27 +499,23 @@ def test_dispatch_from_database_handles_powerplay():
         mock_guild_prefs.get_preferences.return_value = {}
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
-        mock_server_cooldowns = Mock()
-        mock_user_cooldowns = Mock()
         mock_subscribers = Mock()
         mock_subscribers.all.return_value = []
-        
+
         messenger = DiscordMessenger(
             mock_client,
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
-            mock_server_cooldowns,
-            mock_user_cooldowns,
             mock_subscribers,
         )
-        
+
         # This will fail because dispatch_from_database doesn't exist yet
         try:
             await messenger.dispatch_from_database(mock_db)
         except AttributeError:
             pass  # Expected in RED phase
-        
+
         # Verify check_cooldown was called with powerplay parameters
         if mock_db.check_cooldown.called:
             call_args = mock_db.check_cooldown.call_args
