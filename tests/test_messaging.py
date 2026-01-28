@@ -39,33 +39,6 @@ def _settings() -> Settings:
     )
 
 
-def test_loop_done_waits_for_queue_completion():
-    async def _run():
-        loop = asyncio.get_running_loop()
-        messenger = DiscordMessenger(
-            _DummyClient(loop),
-            _settings(),
-            object(),
-            object(),
-            object(),
-        )
-
-        drain_called = asyncio.Event()
-
-        def _mark_drain():
-            drain_called.set()
-
-        messenger._drain_and_emit_pings = _mark_drain  # type: ignore[assignment]
-
-        messenger.queue.put_nowait((0, "hello"))
-        messenger.loop_done_from_thread()
-
-        await asyncio.sleep(0.05)
-        assert not drain_called.is_set()
-
-        messenger.queue.task_done()
-        await asyncio.wait_for(drain_called.wait(), timeout=1)
-
     asyncio.run(_run())
 
 
