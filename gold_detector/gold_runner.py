@@ -11,7 +11,7 @@ import gold
 class GoldRunner:
     def __init__(
         self,
-        emit: Callable[[str], None],
+        emit: Optional[Callable[[str], None]],
         loop_done: Optional[Callable[[], None]],
         logger: Optional[logging.Logger] = None,
     ):

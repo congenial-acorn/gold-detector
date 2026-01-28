@@ -101,7 +101,7 @@ async def on_ready():
             logger.warning("Slash command sync failed: %s", exc)
 
         GoldRunner(
-            emit=messenger.enqueue_from_thread,
+            emit=None,
             loop_done=messenger.loop_done_from_thread,
             logger=logger.getChild("gold_runner"),
         ).start()

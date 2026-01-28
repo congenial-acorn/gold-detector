@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
-from collections import defaultdict
-from typing import TYPE_CHECKING, Any, DefaultDict, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Optional
 
 import discord
 from discord import AllowedMentions
 
 from .config import Settings
-from .message_filters import filter_message_for_preferences
 from .services import (
     GuildPreferencesService,
     OptOutService,
@@ -40,201 +37,16 @@ class DiscordMessenger:
         self.logger = logger or logging.getLogger("bot.messaging")
         self.market_db = market_db
 
-        # Message queue items are tagged with the gold.py cycle number so pings
-        # only fire for guilds that actually received a message in that cycle.
-        self.queue: asyncio.Queue[Tuple[int, str]] = asyncio.Queue(
-            maxsize=settings.queue_max_size
-        )
-        self.ping_queue: asyncio.Queue[int] = asyncio.Queue(
-            maxsize=settings.queue_max_size
-        )
-        self._cycle_lock = threading.Lock()
-        self._cycle_id: int = 0
-        self._delivered_by_cycle: DefaultDict[int, Set[int]] = defaultdict(set)
-
-    def enqueue_from_thread(self, content: str) -> None:
-        """Schedule a message into the dispatcher queue from any thread."""
-
-        def _put():
-            with self._cycle_lock:
-                cycle = self._cycle_id
-
-            try:
-                self.queue.put_nowait((cycle, content))
-            except asyncio.QueueFull:
-                self.logger.warning(
-                    "[queue] Message queue full (%s items), dropping message",
-                    self.settings.queue_max_size,
-                )
-
-        self.client.loop.call_soon_threadsafe(_put)
-
     def loop_done_from_thread(self) -> None:
-        asyncio.run_coroutine_threadsafe(self._drain_after_queue(), self.client.loop)
+        """Dispatch messages from database (called from gold.py thread)."""
         if self.market_db:
             asyncio.run_coroutine_threadsafe(
                 self.dispatch_from_database(self.market_db), self.client.loop
             )
 
-    async def _drain_after_queue(self) -> None:
-        await self.queue.join()
-        self._drain_and_emit_pings()
-
     async def start_background_tasks(self) -> None:
-        asyncio.create_task(self._dispatcher_loop())
-        asyncio.create_task(self._ping_loop())
-
-    async def _dispatcher_loop(self) -> None:
-        await self.client.wait_until_ready()
-        while True:
-            cycle_id, msg = await self.queue.get()
-            try:
-                guilds = list(self.client.guilds)
-                guild_tasks = [
-                    asyncio.create_task(self._send_to_guild(g, msg)) for g in guilds
-                ]
-                dm_task = asyncio.create_task(self._dm_subscribers_broadcast(msg))
-
-                results = await asyncio.gather(
-                    *(guild_tasks + [dm_task]), return_exceptions=True
-                )
-                sent_guild_ids = {
-                    g.id
-                    for g, r in zip(guilds, results[:-1])
-                    if (r is True) and not isinstance(r, Exception)
-                }
-                if sent_guild_ids:
-                    with self._cycle_lock:
-                        self._delivered_by_cycle[cycle_id].update(sent_guild_ids)
-            finally:
-                self.queue.task_done()
-
-    def _drain_and_emit_pings(self) -> None:
-        with self._cycle_lock:
-            current_cycle = self._cycle_id
-            to_ping = list(self._delivered_by_cycle.pop(current_cycle, set()))
-            # Advance cycle so any deliveries after loop_done are counted for the next cycle.
-            self._cycle_id += 1
-
-        for gid in to_ping:
-            if not self.guild_prefs.pings_enabled(gid):
-                self.logger.debug("[ping] Skipping guild %s (pings disabled)", gid)
-                continue
-            try:
-                self.ping_queue.put_nowait(gid)
-            except asyncio.QueueFull:
-                self.logger.error("[ping] Queue full, cannot enqueue guild %s", gid)
-
-        if to_ping:
-            self.logger.info("[ping] Queued pings for %s guilds", len(to_ping))
-        else:
-            self.logger.debug(
-                "Loop done: no guild deliveries this cycle; suppressing all pings."
-            )
-
-    async def _ping_loop(self) -> None:
-        while True:
-            gid = await self.ping_queue.get()
-            try:
-                guild = self.client.get_guild(gid)
-                if not guild:
-                    self.logger.warning(
-                        "[ping_loop] Guild %s not found, skipping ping", gid
-                    )
-                    continue
-
-                channel = self._resolve_sendable_channel(guild)
-                if not channel:
-                    self.logger.warning("[ping_loop] No sendable channel in %s", guild)
-                    continue
-
-                role = self._find_role_by_name(guild)
-                if role:
-                    await channel.send(
-                        f"{role.mention}",
-                        allowed_mentions=AllowedMentions(
-                            roles=True, users=False, everyone=False
-                        ),
-                    )
-                    self.logger.info("[%s] Ping sent to role %s", guild.name, role.name)
-                else:
-                    await channel.send(
-                        "Scan complete. New results above.",
-                        allowed_mentions=AllowedMentions.none(),
-                    )
-                    self.logger.info(
-                        "[%s] Scan complete message sent (no role)", guild.name
-                    )
-            except discord.Forbidden as exc:
-                self.logger.error(
-                    "[ping_loop] Permission denied for guild %s: %s", gid, exc
-                )
-            except discord.HTTPException as exc:
-                self.logger.error("[ping_loop] HTTP error for guild %s: %s", gid, exc)
-            except Exception as exc:  # noqa: BLE001
-                self.logger.error(
-                    "[ping_loop] Unexpected error for guild %s: %s",
-                    gid,
-                    exc,
-                    exc_info=True,
-                )
-            finally:
-                self.ping_queue.task_done()
-
-    async def _dm_subscribers_broadcast(self, content: str) -> None:
-        targets = self.subscribers.all()
-        if not targets:
-            return
-
-        allowed_mentions = AllowedMentions.none()
-
-        async def _send_one(uid: int) -> None:
-            if self.settings.debug_mode_dms and self.settings.debug_user_id:
-                if uid != self.settings.debug_user_id:
-                    self.logger.debug(
-                        "[DM] Skipping user %s (DEBUG_MODE_DMS active)", uid
-                    )
-                    return
-
-            prefs = self.guild_prefs.get_preferences("user", uid)
-            filtered = filter_message_for_preferences(content, prefs)
-            if filtered is None:
-                self.logger.debug(
-                    "[DM] Skipping user %s due to preference filters", uid
-                )
-                return
-
-            try:
-                user = await self.client.fetch_user(uid)
-                await user.send(filtered, allowed_mentions=allowed_mentions)
-                self.logger.debug("[DM] Sent to user %s", uid)
-            except discord.NotFound:
-                self.logger.info(
-                    "[DM] User %s not found (deleted account?), unsubscribing", uid
-                )
-                self.subscribers.discard(uid)
-            except discord.Forbidden as exc:
-                if "Cannot send messages to this user" in str(exc):
-                    self.logger.info("[DM] Cannot message user %s, unsubscribing", uid)
-                    self.subscribers.discard(uid)
-                else:
-                    self.logger.warning(
-                        "[DM] Forbidden error for user %s: %s", uid, exc
-                    )
-            except discord.HTTPException as exc:
-                self.logger.error("[DM] HTTP error sending to user %s: %s", uid, exc)
-            except Exception as exc:  # noqa: BLE001
-                self.logger.error(
-                    "[DM] Unexpected error sending to user %s: %s",
-                    uid,
-                    exc,
-                    exc_info=True,
-                )
-
-        await asyncio.gather(
-            *[asyncio.create_task(_send_one(uid)) for uid in targets],
-            return_exceptions=True,
-        )
+        """Initialize messenger (no background tasks needed after refactor)."""
+        pass
 
     def _passes_station_type_filter(self, station_type: str, prefs: dict[str, Any]) -> bool:
         """Check if station type passes preference filter."""
@@ -392,68 +204,6 @@ class DiscordMessenger:
             if role.name.lower() == rname:
                 return role
         return None
-
-    async def _send_to_guild(self, guild: discord.Guild, content: str) -> bool:
-        if self.opt_outs.is_opted_out(guild.id):
-            self.logger.debug("[%s] Skipping - guild opted out", guild.name)
-            return False
-
-        if self.settings.debug_mode and self.settings.debug_server_id:
-            if guild.id != self.settings.debug_server_id:
-                self.logger.debug(
-                    "[DEBUG MODE] Skipping message to server %s, only sending to %s.",
-                    guild.id,
-                    self.settings.debug_server_id,
-                )
-                return False
-
-        prefs = self.guild_prefs.get_preferences("guild", guild.id)
-        filtered = filter_message_for_preferences(content, prefs)
-        if filtered is None:
-            self.logger.debug(
-                "[%s] Message filtered out by preferences; skipping.", guild.name
-            )
-            return False
-
-        channel = self._resolve_sendable_channel(guild)
-        if not channel:
-            self.logger.warning(
-                "[%s] No sendable channel resolved; skipping.", guild.name
-            )
-            return False
-
-        try:
-            await channel.send(filtered, allowed_mentions=AllowedMentions.none())
-            self.logger.info(
-                "[%s] Alert sent to #%s", guild.name, channel.name
-            )
-            return True
-        except discord.Forbidden as exc:
-            self.logger.error(
-                "[%s] Permission denied sending to #%s: %s",
-                guild.name,
-                channel.name,
-                exc,
-            )
-            return False
-        except discord.HTTPException as exc:
-            self.logger.error(
-                "[%s] HTTP error sending to #%s: %s",
-                guild.name,
-                channel.name,
-                exc,
-                exc_info=True,
-            )
-            return False
-        except Exception as exc:  # noqa: BLE001
-            self.logger.error(
-                "[%s] Unexpected error sending to #%s: %s",
-                guild.name,
-                channel.name,
-                exc,
-                exc_info=True,
-            )
-            return False
 
     async def dispatch_from_database(self, market_db: MarketDatabase) -> None:
         """

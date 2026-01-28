@@ -387,3 +387,81 @@ When pytest runs these tests (after Task 4 implementation):
 ### Dependencies Handled
 - Task 5 properly depends on Task 4 (dispatch now handles cooldowns)
 - monitor.py simplified by delegating cooldown tracking to dispatch layer
+
+## Task 6: Legacy Queue Cleanup - Completed (2025-01-27)
+
+### Successfully Removed:
+
+**gold_detector/messaging.py:**
+- Queue attributes: `self.queue`, `self.ping_queue`, `self._cycle_lock`, `self._cycle_id`, `self._delivered_by_cycle`
+- `enqueue_from_thread()` - queue entry method
+- `_dispatcher_loop()` - main queue processing loop
+- `_ping_loop()` - separate ping processing loop
+- `_drain_and_emit_pings()` - ping queue manager
+- `_dm_subscribers_broadcast()` - queue-based DM broadcast
+- `_send_to_guild()` - queue-based guild sender
+- `_drain_after_queue()` - queue drain helper
+- Unused imports: `threading`, `defaultdict`, `Set`, `Tuple`, `filter_message_for_preferences`
+
+**gold_detector/alert_helpers.py:**
+- `assemble_hidden_market_messages()` function (lines 63-84) - no longer needed with inline message building
+
+**gold.py:**
+- Removed imports: `assemble_hidden_market_messages`, `send_to_discord`, `set_emitter`, `set_loop_done_emitter`, `emit_loop_done`
+
+**bot.py:**
+- Changed GoldRunner emit parameter from `messenger.enqueue_from_thread` to `None`
+
+**gold_detector/gold_runner.py:**
+- Made `emit` parameter Optional to handle None value
+
+### Successfully Retained (as required):
+
+- `_resolve_sendable_channel()` - still needed for channel resolution
+- `_find_role_by_name()` - still needed for ping role resolution
+- `dispatch_from_database()` - new refactored dispatch method
+- `loop_done_from_thread()` - interface between gold.py thread and async loop
+- `start_background_tasks()` - kept for compatibility (now does nothing)
+
+### Verification:
+
+- ✓ All Python files have valid syntax (py_compile)
+- ✓ All legacy queue methods removed from messaging.py
+- ✓ assemble_hidden_market_messages removed from alert_helpers.py
+- ✓ Unused imports cleaned from gold.py
+- ✓ bot.py no longer references enqueue_from_thread
+- ✓ Required methods still present
+
+### Key Learnings:
+
+1. **Interface Preservation**: Keeping `loop_done_from_thread()` and `start_background_tasks()` as no-ops preserves compatibility with existing initialization code in bot.py, avoiding widespread changes.
+
+2. **hasattr Pattern**: The `if hasattr(gold, "set_emitter")` pattern in gold_runner.py gracefully handles removal of emitter functions without code changes in the runner.
+
+3. **Inline Message Building**: The new `dispatch_from_database()` builds messages inline rather than using helper functions like `assemble_hidden_market_messages()`, which simplifies data flow.
+
+4. **Queue Removal Impacts**: Removing queues eliminated:
+   - Complex state management (cycle IDs, delivered sets)
+   - Multi-threaded queue coordination
+   - Separate ping processing loop
+   - Ping queue size limits
+
+5. **Simplified Dispatch Flow**: New flow is linear:
+   - gold.py calls `loop_done_from_thread()` 
+   - `loop_done_from_thread()` calls `dispatch_from_database()`
+   - `dispatch_from_database()` processes all entries and sends messages directly
+
+### No Breaking Changes:
+
+The cleanup maintains all public interfaces:
+- `DiscordMessenger` still works
+- `dispatch_from_database()` still callable
+- bot.py initialization unchanged (except emit parameter)
+- gold.py main loop unchanged
+
+### Code Quality Impact:
+
+- Reduced code complexity by ~200 lines
+- Removed threading synchronization (no locks needed)
+- Eliminated queue overflow edge cases
+- Simplified testing (no queue state to mock)
