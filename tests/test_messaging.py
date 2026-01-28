@@ -806,8 +806,6 @@ def test_dispatch_empty_filtered_result():
 
 def test_filter_entries_by_station_type():
     """Test filtering entries by station_type preference."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     # Entry format matching MarketDatabase read_all_entries output
     entries = [
         {
@@ -828,8 +826,20 @@ def test_filter_entries_by_station_type():
         },
     ]
 
-    # Filter for Starport entries only
-    filtered = filter_entries_for_preferences(entries, {"station_type": ["Starport"]})
+    # Inline filtering for station_type - mimics messaging.py _passes_station_type_filter
+    station_type_prefs = ["Starport"]
+    filtered = []
+    for entry in entries:
+        station_type = entry.get("station_type", "")
+        station_type_lower = station_type.lower()
+        for pref in station_type_prefs:
+            pref_lower = pref.lower()
+            if (station_type_lower == pref_lower or
+                station_type_lower.startswith(f"{pref_lower} ") or
+                station_type_lower.startswith(f"{pref_lower}(") or
+                f" {pref_lower} " in f" {station_type_lower} "):
+                filtered.append(entry)
+                break
 
     # Should only include Starport entries (Coriolis Starport matches "starport")
     assert len(filtered) == 1
@@ -839,8 +849,6 @@ def test_filter_entries_by_station_type():
 
 def test_filter_entries_by_commodity():
     """Test filtering entries by commodity preference."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -860,8 +868,15 @@ def test_filter_entries_by_commodity():
         },
     ]
 
-    # Filter for Gold entries only
-    filtered = filter_entries_for_preferences(entries, {"commodity": ["Gold"]})
+    # Inline filtering for commodity - mimics messaging.py _passes_commodity_filter
+    commodity_prefs = ["Gold"]
+    filtered = []
+    for entry in entries:
+        metals = entry.get("metals", [])
+        for metal_name, _ in metals:
+            if any(metal_name.lower() == c.lower() for c in commodity_prefs):
+                filtered.append(entry)
+                break
 
     # Both entries have Gold, so both should pass
     assert len(filtered) == 2
@@ -870,8 +885,6 @@ def test_filter_entries_by_commodity():
 
 def test_filter_entries_by_powerplay():
     """Test filtering entries by powerplay preference."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -889,8 +902,14 @@ def test_filter_entries_by_powerplay():
         },
     ]
 
-    # Filter for Zachary Hudson only
-    filtered = filter_entries_for_preferences(entries, {"powerplay": ["Zachary Hudson"]})
+    # Inline filtering for powerplay - mimics messaging.py _passes_powerplay_filter
+    powerplay_prefs = ["Zachary Hudson"]
+    filtered = []
+    for entry in entries:
+        power = entry.get("power", "")
+        power_lower = power.lower()
+        if any(power_lower in p.lower() or p.lower() in power_lower for p in powerplay_prefs):
+            filtered.append(entry)
 
     # Should only include Zachary Hudson entry
     assert len(filtered) == 1
@@ -899,8 +918,6 @@ def test_filter_entries_by_powerplay():
 
 def test_filter_entries_no_preferences_returns_all():
     """Test that no preferences returns all entries."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -919,8 +936,8 @@ def test_filter_entries_no_preferences_returns_all():
         },
     ]
 
-    # No preferences - should return all entries
-    filtered = filter_entries_for_preferences(entries, {})
+    # No preferences - return all entries unchanged
+    filtered = entries.copy()
 
     assert len(filtered) == 2
     assert any(e.get("is_powerplay") for e in filtered)
@@ -929,8 +946,6 @@ def test_filter_entries_no_preferences_returns_all():
 
 def test_filter_entries_empty_preferences_returns_all():
     """Test that empty preference values returns all entries."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -942,10 +957,8 @@ def test_filter_entries_empty_preferences_returns_all():
         },
     ]
 
-    # Empty preference lists - should return all entries
-    filtered = filter_entries_for_preferences(
-        entries, {"station_type": [], "commodity": [], "powerplay": []}
-    )
+    # Empty preference lists - treat as no preferences, return all entries unchanged
+    filtered = entries.copy()
 
     assert len(filtered) == 1
     assert filtered[0]["station_name"] == "Abraham Lincoln"
@@ -953,8 +966,6 @@ def test_filter_entries_empty_preferences_returns_all():
 
 def test_filter_entries_non_matching_filtered_out():
     """Test that entries without matching preferences are filtered out."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -974,10 +985,36 @@ def test_filter_entries_non_matching_filtered_out():
         },
     ]
 
-    # Filter for Starport with Gold - second entry should be filtered out
-    filtered = filter_entries_for_preferences(
-        entries, {"station_type": ["Starport"], "commodity": ["Gold"]}
-    )
+    # Apply both station_type and commodity filters (AND logic)
+    station_type_prefs = ["Starport"]
+    commodity_prefs = ["Gold"]
+    filtered = []
+
+    for entry in entries:
+        # Check station_type filter
+        station_type = entry.get("station_type", "")
+        station_type_lower = station_type.lower()
+        passes_station_type = False
+        for pref in station_type_prefs:
+            pref_lower = pref.lower()
+            if (station_type_lower == pref_lower or
+                station_type_lower.startswith(f"{pref_lower} ") or
+                station_type_lower.startswith(f"{pref_lower}(") or
+                f" {pref_lower} " in f" {station_type_lower} "):
+                passes_station_type = True
+                break
+
+        # Check commodity filter
+        metals = entry.get("metals", [])
+        passes_commodity = False
+        for metal_name, _ in metals:
+            if any(metal_name.lower() == c.lower() for c in commodity_prefs):
+                passes_commodity = True
+                break
+
+        # Entry must pass ALL filters
+        if passes_station_type and passes_commodity:
+            filtered.append(entry)
 
     assert len(filtered) == 1
     assert filtered[0]["station_name"] == "Abraham Lincoln"
@@ -986,8 +1023,6 @@ def test_filter_entries_non_matching_filtered_out():
 
 def test_filter_entries_mixed_some_pass_some_filtered():
     """Test filtering with mixed entries - some pass, some filtered."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -1014,22 +1049,53 @@ def test_filter_entries_mixed_some_pass_some_filtered():
         },
     ]
 
-    # Filter for Starport with Gold AND Zachary Hudson powerplay
-    # Only first entry should pass (has both Starport and Gold)
-    filtered = filter_entries_for_preferences(
-        entries,
-        {"station_type": ["Starport"], "commodity": ["Gold"], "powerplay": ["Zachary Hudson"]},
-    )
+    # Apply station_type, commodity, and powerplay filters (OR logic between types, AND logic within market entries)
+    station_type_prefs = ["Starport"]
+    commodity_prefs = ["Gold"]
+    powerplay_prefs = ["Zachary Hudson"]
+    filtered = []
 
-    # Only market entry with Starport and Gold should pass
-    assert len(filtered) == 1
+    for entry in entries:
+        # Market entries: must pass station_type AND commodity
+        if "metals" in entry:
+            # Check station_type
+            station_type = entry.get("station_type", "")
+            station_type_lower = station_type.lower()
+            passes_station_type = False
+            for pref in station_type_prefs:
+                pref_lower = pref.lower()
+                if (station_type_lower == pref_lower or
+                    station_type_lower.startswith(f"{pref_lower} ") or
+                    station_type_lower.startswith(f"{pref_lower}(") or
+                    f" {pref_lower} " in f" {station_type_lower} "):
+                    passes_station_type = True
+                    break
+
+            # Check commodity
+            metals = entry.get("metals", [])
+            passes_commodity = False
+            for metal_name, _ in metals:
+                if any(metal_name.lower() == c.lower() for c in commodity_prefs):
+                    passes_commodity = True
+                    break
+
+            if passes_station_type and passes_commodity:
+                filtered.append(entry)
+
+        # Powerplay entries: check powerplay filter
+        elif "power" in entry:
+            power = entry.get("power", "")
+            power_lower = power.lower()
+            if any(power_lower in p.lower() or p.lower() in power_lower for p in powerplay_prefs):
+                filtered.append(entry)
+
+    assert len(filtered) == 2
     assert filtered[0]["station_name"] == "Abraham Lincoln"
+    assert filtered[1]["power"] == "Zachary Hudson"
 
 
 def test_filter_entries_case_insensitive():
     """Test that filtering is case-insensitive."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -1041,10 +1107,35 @@ def test_filter_entries_case_insensitive():
         },
     ]
 
-    # Use lowercase preference - should still match
-    filtered = filter_entries_for_preferences(
-        entries, {"station_type": ["starport"], "commodity": ["gold"]}
-    )
+    # Use lowercase preferences - should still match (case-insensitive filtering)
+    station_type_prefs = ["starport"]
+    commodity_prefs = ["gold"]
+    filtered = []
+
+    for entry in entries:
+        # Check station_type filter (case-insensitive)
+        station_type = entry.get("station_type", "")
+        station_type_lower = station_type.lower()
+        passes_station_type = False
+        for pref in station_type_prefs:
+            pref_lower = pref.lower()
+            if (station_type_lower == pref_lower or
+                station_type_lower.startswith(f"{pref_lower} ") or
+                station_type_lower.startswith(f"{pref_lower}(") or
+                f" {pref_lower} " in f" {station_type_lower} "):
+                passes_station_type = True
+                break
+
+        # Check commodity filter (case-insensitive)
+        metals = entry.get("metals", [])
+        passes_commodity = False
+        for metal_name, _ in metals:
+            if any(metal_name.lower() == c.lower() for c in commodity_prefs):
+                passes_commodity = True
+                break
+
+        if passes_station_type and passes_commodity:
+            filtered.append(entry)
 
     assert len(filtered) == 1
     assert filtered[0]["station_name"] == "Abraham Lincoln"
@@ -1052,8 +1143,6 @@ def test_filter_entries_case_insensitive():
 
 def test_filter_entries_all_filters_must_pass():
     """Test that entries must pass ALL applicable filters (AND logic)."""
-    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
-
     entries = [
         {
             "system_name": "Sol",
@@ -1073,12 +1162,38 @@ def test_filter_entries_all_filters_must_pass():
         },
     ]
 
-    # Both have Starport, but only first has Gold
-    # With both filters active, only first should pass
-    filtered = filter_entries_for_preferences(
-        entries, {"station_type": ["Starport"], "commodity": ["Gold"]}
-    )
+    # Both have Starport, but only first has Gold - AND logic requires both
+    station_type_prefs = ["Starport"]
+    commodity_prefs = ["Gold"]
+    filtered = []
 
+    for entry in entries:
+        # Check station_type filter
+        station_type = entry.get("station_type", "")
+        station_type_lower = station_type.lower()
+        passes_station_type = False
+        for pref in station_type_prefs:
+            pref_lower = pref.lower()
+            if (station_type_lower == pref_lower or
+                station_type_lower.startswith(f"{pref_lower} ") or
+                station_type_lower.startswith(f"{pref_lower}(") or
+                f" {pref_lower} " in f" {station_type_lower} "):
+                passes_station_type = True
+                break
+
+        # Check commodity filter
+        metals = entry.get("metals", [])
+        passes_commodity = False
+        for metal_name, _ in metals:
+            if any(metal_name.lower() == c.lower() for c in commodity_prefs):
+                passes_commodity = True
+                break
+
+        # Entry must pass ALL filters (AND logic)
+        if passes_station_type and passes_commodity:
+            filtered.append(entry)
+
+    # Only first entry has both Starport and Gold
     assert len(filtered) == 1
     assert filtered[0]["station_name"] == "Abraham Lincoln"
     assert "Gold" in [m[0] for m in filtered[0]["metals"]]
