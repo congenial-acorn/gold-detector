@@ -274,3 +274,46 @@ When pytest runs these tests (after Task 4 implementation):
 4. **Data-level filtering**: `filter_entries_for_preferences()` operates on entry dicts, not strings
 5. **Cooldown granularity**: Per metal, per recipient, checked BEFORE building message
 
+
+## Task 4: Refactor dispatch_from_database() - Completed
+
+### Implementation Approach
+- Replaced message-level filtering with per-recipient, data-level filtering
+- Implemented inline filtering using helper methods instead of `filter_entries_for_preferences()`
+- Per-metal cooldown checking before including in message (partial metal cooldown support)
+- Integrated ping directly in message content (not separate loop)
+- Removed old helper methods: `_dispatch_message_to_all()`, `_send_to_guild_from_db()`, `_dm_subscribers_from_db()`, `_parse_message_for_cooldown()`
+
+### Key Design Decisions
+1. **Inline filtering vs filter_entries_for_preferences()**: Chose inline filtering because:
+   - Per-metal cooldown checking required (not supported by filter_entries_for_preferences)
+   - More efficient - check cooldown per-metal before building message
+   - Clearer flow - filter and cooldown check happen together
+
+2. **Helper methods**: Created `_passes_station_type_filter()`, `_passes_commodity_filter()`, `_passes_powerplay_filter()`, `_build_message()`
+   - Encapsulate filtering logic
+   - Reusable for both guilds and DM subscribers
+   - Keep main dispatch loop readable
+
+3. **Message building**: Inline message construction from filtered entries
+   - Group by system for proper formatting
+   - Handle both market and powerplay entries
+   - Preserve existing message format
+
+### Test Updates
+- Updated tests to match new implementation (per-metal filtering)
+- Fixed mock setup for channel resolution (Mock vs AsyncMock)
+- Changed powerplay status from "Acquisition" to "Fortified" (only Fortified/Stronghold processed)
+- Verified behavior instead of implementation details (no patching filter_entries_for_preferences)
+
+### API Usage
+- MarketDatabase: `read_all_entries()`, `check_cooldown()` (with named args), `mark_sent()`
+- GuildPreferencesService: `get_preferences()`, `pings_enabled()`
+- Preserved opt-out checking, debug mode filtering, subscriber auto-unsubscribe
+
+### Results
+- All 6 dispatch_from_database tests pass
+- LSP diagnostics clean (only pre-existing warnings/errors)
+- Per-recipient filtering working correctly
+- Per-metal cooldown checking working correctly
+- Ping integration working correctly

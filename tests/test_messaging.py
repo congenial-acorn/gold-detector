@@ -97,15 +97,35 @@ def test_dispatch_from_database_reads_entries():
         
         # Create mock client with guild
         mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
         mock_guild = Mock()
         mock_guild.id = 123456
         mock_guild.name = "Test Guild"
+        mock_guild.me = Mock()
+        mock_channel = Mock()
+        mock_channel.name = "market-watch"
+        mock_channel.send = AsyncMock()
+        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.position = 0
+        mock_channel.id = 999
+        mock_guild.text_channels = [mock_channel]
+        mock_guild.get_channel.return_value = None
+        mock_guild.roles = []
         mock_client.guilds = [mock_guild]
         
         # Create mock services
         mock_guild_prefs = Mock()
+        mock_guild_prefs.get_preferences.return_value = {}
+        mock_guild_prefs.pings_enabled.return_value = False
+        mock_guild_prefs.effective_channel_name.return_value = "market-watch"
+        mock_guild_prefs.effective_channel_id.return_value = None
         mock_opt_outs = Mock()
+        mock_opt_outs.is_opted_out.return_value = False
         mock_subscribers = Mock()
+        mock_subscribers.all.return_value = []
+        
+        # Mock check_cooldown to return True (not on cooldown)
+        mock_db.check_cooldown.return_value = True
 
         messenger = DiscordMessenger(
             mock_client,
@@ -115,11 +135,7 @@ def test_dispatch_from_database_reads_entries():
             mock_subscribers,
         )
         
-        # This will fail because dispatch_from_database doesn't exist yet
-        try:
-            await messenger.dispatch_from_database(mock_db)
-        except AttributeError:
-            pass  # Expected in RED phase
+        await messenger.dispatch_from_database(mock_db)
         
         # Verify read_all_entries was called
         mock_db.read_all_entries.assert_called_once()
@@ -160,13 +176,17 @@ def test_dispatch_from_database_checks_cooldowns():
         
         # Create mock client with guild
         mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
         mock_guild = Mock()
         mock_guild.id = 123456
         mock_guild.name = "Test Guild"
         mock_guild.me = Mock()
-        mock_channel = AsyncMock()
+        mock_channel = Mock()
         mock_channel.name = "market-watch"
-        mock_channel.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel.send = AsyncMock()
+        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.position = 0
+        mock_channel.id = 999
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
@@ -193,21 +213,16 @@ def test_dispatch_from_database_checks_cooldowns():
             mock_subscribers,
         )
 
-        # This will fail because refactored dispatch_from_database doesn't exist yet
-        try:
-            await messenger.dispatch_from_database(mock_db)
-        except (AttributeError, TypeError):
-            pass  # Expected in RED phase
+        await messenger.dispatch_from_database(mock_db)
 
         # Verify check_cooldown was called for EACH metal BEFORE building message
-        if mock_db.check_cooldown.called:
-            # Should be called for both Gold and Palladium
-            assert mock_db.check_cooldown.call_count >= 2
-            # Verify it was called with correct parameters
-            calls = mock_db.check_cooldown.call_args_list
-            metals_checked = {call[1]["metal"] for call in calls}
-            assert "Gold" in metals_checked
-            assert "Palladium" in metals_checked
+        # Should be called for both Gold and Palladium
+        assert mock_db.check_cooldown.call_count >= 2
+        # Verify it was called with correct parameters
+        calls = mock_db.check_cooldown.call_args_list
+        metals_checked = {call[1]["metal"] for call in calls}
+        assert "Gold" in metals_checked
+        assert "Palladium" in metals_checked
     
     asyncio.run(_run())
 
@@ -322,13 +337,17 @@ def test_dispatch_from_database_applies_preferences():
         
         # Create mock client with guild
         mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
         mock_guild = Mock()
         mock_guild.id = 123456
         mock_guild.name = "Test Guild"
         mock_guild.me = Mock()
-        mock_channel = AsyncMock()
+        mock_channel = Mock()
         mock_channel.name = "market-watch"
-        mock_channel.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel.send = AsyncMock()
+        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.position = 0
+        mock_channel.id = 999
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
@@ -355,23 +374,11 @@ def test_dispatch_from_database_applies_preferences():
             mock_subscribers,
         )
 
-        # Patch filter_entries_for_preferences to verify it's called at data level
-        with patch("gold_detector.messaging.filter_entries_for_preferences") as mock_filter:
-            mock_filter.return_value = []
-            
-            try:
-                await messenger.dispatch_from_database(mock_db)
-            except (AttributeError, TypeError):
-                pass
-            
-            # Verify filter_entries_for_preferences was called with entry data and preferences
-            if mock_filter.called:
-                call_args = mock_filter.call_args
-                assert call_args is not None
-                entries_arg = call_args[0][0]
-                prefs_arg = call_args[0][1]
-                assert isinstance(entries_arg, list)
-                assert prefs_arg == {"commodity": ["Palladium"]}
+        await messenger.dispatch_from_database(mock_db)
+        
+        # Verify that Gold was filtered out (Palladium-only preference)
+        # Since Gold doesn't match the Palladium preference, no message should be sent
+        mock_channel.send.assert_not_called()
     
     asyncio.run(_run())
 
@@ -475,7 +482,7 @@ def test_dispatch_from_database_handles_powerplay():
                 "system_address": "1234",
                 "powerplay": {
                     "power": "Zachary Hudson",
-                    "status": "Acquisition",
+                    "status": "Fortified",
                     "progress": 75
                 },
                 "stations": {}
@@ -485,14 +492,17 @@ def test_dispatch_from_database_handles_powerplay():
         
         # Create mock client with guild
         mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
         mock_guild = Mock()
         mock_guild.id = 123456
         mock_guild.name = "Test Guild"
         mock_guild.me = Mock()
-        mock_channel = AsyncMock()
+        mock_channel = Mock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.position = 0
+        mock_channel.id = 999
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
@@ -519,23 +529,13 @@ def test_dispatch_from_database_handles_powerplay():
             mock_subscribers,
         )
 
-        # Patch filter_entries_for_preferences to verify powerplay filtering
-        with patch("gold_detector.messaging.filter_entries_for_preferences") as mock_filter:
-            mock_filter.return_value = []
-            
-            try:
-                await messenger.dispatch_from_database(mock_db)
-            except (AttributeError, TypeError):
-                pass
-
-            # Verify filter_entries_for_preferences was called with powerplay entry
-            if mock_filter.called:
-                call_args = mock_filter.call_args
-                assert call_args is not None
-                entries_arg = call_args[0][0]
-                prefs_arg = call_args[0][1]
-                assert isinstance(entries_arg, list)
-                assert prefs_arg == {"powerplay": ["Zachary Hudson"]}
+        await messenger.dispatch_from_database(mock_db)
+        
+        # Verify powerplay message was sent (Zachary Hudson preference matches)
+        mock_channel.send.assert_called_once()
+        sent_message = mock_channel.send.call_args[0][0]
+        assert "Zachary Hudson" in sent_message
+        assert "Fortified" in sent_message
 
     asyncio.run(_run())
 
