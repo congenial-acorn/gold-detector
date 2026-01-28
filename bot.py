@@ -68,6 +68,7 @@ async def on_ready():
         status=discord.Status.online,
     )
     logger.info("=== Bot Ready ===")
+    assert client.user is not None
     logger.info("Logged in as %s (ID: %s)", client.user, client.user.id)
     logger.info("Connected to %s guilds", len(client.guilds))
     logger.info(
