@@ -317,3 +317,73 @@ When pytest runs these tests (after Task 4 implementation):
 - Per-recipient filtering working correctly
 - Per-metal cooldown checking working correctly
 - Ping integration working correctly
+
+## Task 5: Remove cooldown logic from monitor.py - Completed
+
+### Changes Made to monitor.py
+
+#### Removed Code
+1. **HiddenMarketEntry class** (lines 24-31): Dataclass used for cooldown tracking
+2. **_upsert_hidden_entry() function** (lines 71-84): Helper for building messages dict
+3. **messages dict** (line 73): Dict tracking entries to send after cooldown check
+4. **Database cooldown logic** (lines 162-200): 
+   - `check_cooldown()` call
+   - `mark_sent()` call
+   - Alert counter increment
+   - Cooldown logging
+5. **Non-database cooldown logic** (lines 201-231):
+   - `last_ping` dict usage
+   - Non-DB cooldown time tracking
+   - Alert counter increment
+   - Cooldown logging
+6. **last_ping variable** (line 62): Tracking dict for non-DB mode
+7. **cooldown variable** (line 63): timedelta object
+8. **alerts_sent tracking** (line 97): Counter for alerts sent
+9. **Alert count in log**: Changed from "checked X stations, sent Y alerts" to "checked X stations"
+
+#### Preserved Code
+- Detection logic (threshold checks: `buy_price > PRICE_THRESHOLD and stock > STOCK_THRESHOLD`)
+- Stock checking logic
+- `write_market_entry()` calls (writing detected entries to database)
+- `write_powerplay_entry()` calls (via get_powerplay_status)
+- `begin_scan()` and `end_scan()` calls
+- All database operations
+
+### Changes Made to test_monitor_metals.py
+
+#### Removed Tests
+1. **test_monitor_metals_respects_cooldown**: Tested cooldown check behavior with database
+2. **test_monitor_metals_uses_database_for_cooldowns**: Tested mark_sent after cooldown check
+3. **test_monitor_metals_respects_database_cooldown**: Tested cooldown active scenario
+
+#### Updated Test
+- **test_monitor_metals_writes_to_market_database**: 
+  - Removed `mock_db.check_cooldown.return_value = True` setup
+  - Removed any cooldown-related assertions
+  - Now only verifies: begin_scan, write_market_entry, end_scan called correctly
+
+### Test Results
+- All 62 tests pass (1 test in test_monitor_metals.py + 61 other tests)
+- No new test failures introduced
+- LSP diagnostics clean for cooldown-related changes (remaining errors are pre-existing BeautifulSoup type issues)
+
+### Key Insights
+1. **Separation of concerns**: monitor.py now ONLY writes to database, dispatch_from_database handles all cooldown logic
+2. **Simplified monitor loop**: Removed complex cooldown tracking, just write entries as they're detected
+3. **Detection logic preserved**: Threshold and stock checks unchanged, still detect the same opportunities
+4. **Database-driven workflow**: monitor.py → database → dispatch_from_database → Discord
+
+### Success Criteria Verification
+- [x] monitor.py no longer calls check_cooldown() or mark_sent()
+- [x] monitor.py only writes to database via write_market_entry() / write_powerplay_entry()
+- [x] HiddenMarketEntry usage removed
+- [x] _upsert_hidden_entry() method removed
+- [x] messages dict building removed
+- [x] Tests in tests/test_monitor_metals.py updated
+- [x] pytest tests/test_monitor_metals.py → PASS
+- [x] pytest tests/ → PASS (all 62 tests)
+- [x] LSP diagnostics clean for changed files
+
+### Dependencies Handled
+- Task 5 properly depends on Task 4 (dispatch now handles cooldowns)
+- monitor.py simplified by delegating cooldown tracking to dispatch layer
