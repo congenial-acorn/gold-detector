@@ -209,3 +209,68 @@ Comments are **necessary** because:
 - [x] LSP diagnostics clean (no errors)
 - [x] Follows existing code patterns in `message_filters.py`
 
+
+## [2026-01-28T01:30:00Z] Task: Update dispatch tests for refactored behavior (RED phase)
+
+### Tests Updated
+1. **test_dispatch_from_database_checks_cooldowns**
+   - Changed: Now expects cooldown check for EACH metal BEFORE building message
+   - Test data: Two metals (Gold passes, Palladium doesn't)
+   - Assertion: Verifies check_cooldown called for both metals
+
+2. **test_dispatch_from_database_marks_sent**
+   - Changed: Docstring clarifies marking happens after building message (not after send)
+   - Behavior: mark_sent called for entries included in message
+
+3. **test_dispatch_from_database_applies_preferences**
+   - Changed: Patches `filter_entries_for_preferences` instead of `filter_message_for_preferences`
+   - Verifies: Data-level filtering with entry list and preferences dict
+
+4. **test_dispatch_from_database_includes_role_mentions**
+   - Changed: Verifies role mention integrated in message content
+   - No separate call to send ping
+
+5. **test_dispatch_from_database_handles_powerplay**
+   - Changed: Patches `filter_entries_for_preferences` for powerplay filtering
+   - Verifies: Powerplay entries filtered at data level
+
+### New Tests Added
+6. **test_dispatch_per_recipient_filtering**
+   - Tests: Different guilds receive different messages based on preferences
+   - Setup: Two guilds (Gold-only, Palladium-only)
+   - Assertion: Each guild receives only their preferred commodity
+
+7. **test_dispatch_partial_metal_cooldown**
+   - Tests: Only metals passing cooldown included in message
+   - Setup: Gold passes cooldown, Palladium doesn't
+   - Assertion: Message contains Gold, not Palladium
+
+8. **test_dispatch_empty_filtered_result**
+   - Tests: No message sent when all entries filtered out
+   - Setup: Gold in database, Palladium-only preference
+   - Assertion: channel.send not called
+
+### Expected RED Phase Behavior
+When pytest runs these tests (after Task 4 implementation):
+- Tests will FAIL because refactored `dispatch_from_database()` doesn't exist yet
+- Current implementation uses old behavior:
+  - Builds message first, then filters with `filter_message_for_preferences()`
+  - Checks cooldown after building message
+  - Sends same message to all recipients
+- Tests expect new behavior:
+  - Filters entries with `filter_entries_for_preferences()` BEFORE building message
+  - Checks cooldown per-entry BEFORE inclusion
+  - Builds different messages per recipient
+
+### Test Syntax Validation
+- All tests compile successfully (`python3 -m py_compile tests/test_messaging.py`)
+- LSP errors are pre-existing (Mock type mismatches in test file)
+- Tests ready for GREEN phase implementation (Task 4)
+
+### Key Insights
+1. **Per-recipient filtering**: Each guild gets filtered entries based on their preferences
+2. **Partial metal cooldown**: If Gold passes but Palladium doesn't, only Gold included
+3. **Empty result handling**: If all entries filtered out, no message sent
+4. **Data-level filtering**: `filter_entries_for_preferences()` operates on entry dicts, not strings
+5. **Cooldown granularity**: Per metal, per recipient, checked BEFORE building message
+
