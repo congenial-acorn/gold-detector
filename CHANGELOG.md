@@ -1,3 +1,44 @@
+## [1.6.0] - 2026-01-28
+
+### Added
+- **Implemented MarketDatabase class** with atomic writes for persistent storage of market data, powerplay entries, and cooldown tracking. The database now serves as the single source of truth, replacing multiple JSON files.
+
+### Changed
+- **Major architectural refactor to database-driven message dispatch**:
+  - Messages now flow: scan → write to DB → dispatch from DB → send
+  - Cooldown checking and marking handled directly by MarketDatabase
+  - Removed `send_to_discord()` calls from monitor.py and powerplay.py
+  - Implemented per-recipient dispatch behavior with data-level filtering
+  - All filtering logic now inline in messaging, removing message_filters.py module
+- **Removed legacy cooldown infrastructure**:
+  - Deprecated CooldownService class removed (~70 lines)
+  - Removed server_cooldowns.json and user_cooldowns.json files
+  - Removed snapshot_cooldowns() method
+  - Cooldown tracking fully integrated into MarketDatabase
+- **Cleaned up vestigial code**:
+  - Removed unused send_to_discord() function
+  - Removed unused imports and variables throughout codebase
+  - Fixed type hints consistency
+  - Removed commented-out code in powerplay.py
+- **Improved test coverage**:
+  - Added comprehensive tests for MarketDatabase class
+  - Updated tests for database-driven message dispatch
+  - Refactored test assertions for inline filtering logic
+  - All 53 tests passing with no new mypy or ruff errors
+
+### Technical Details
+- MarketDatabase provides atomic write operations to prevent data corruption
+- Per-recipient dispatch allows granular control over which entries each user/server receives
+- Inline filtering logic replaces the deprecated message_filters.py module
+- Database-driven architecture enables better crash recovery and state persistence
+
+### Performance Impact
+- Reduced duplicate cooldown tracking by centralizing in database
+- Eliminated JSON file I/O for cooldown state during normal operation
+- Atomic database writes prevent partial state updates
+
+---
+
 ## [1.5.2] - 2026-1-1
 
 Happy New Year! 🎉
