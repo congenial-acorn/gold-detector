@@ -58,27 +58,3 @@ def mask_commodity_links(urls):
             text = "Sell here"
         masked.append(f"[{text}]({url})")
     return " ".join(masked)
-
-
-def assemble_hidden_market_messages(entries):
-    """
-    entries: list of dicts with system_name, system_address, station_name, station_type, url, metals [(metal, stock)]
-    Returns a list of condensed messages, one per system.
-    """
-    grouped = {}
-    for entry in entries:
-        key = (entry.get("system_name"), entry.get("system_address"))
-        grouped.setdefault(key, []).append(entry)
-
-    messages = []
-    for (sys_name, sys_addr), stations in grouped.items():
-        sys_label = sys_name or "Unknown system"
-        addr_label = f"<{sys_addr}>" if sys_addr else "Unknown address"
-        lines = [f"Hidden markets detected in {sys_label} ({addr_label}):"]
-        for st in stations:
-            metals = "; ".join(f"{m} stock: {qty}" for m, qty in st.get("metals", []))
-            lines.append(
-                f"- {st.get('station_name')} ({st.get('station_type')}), <{st.get('url')}> - {metals}"
-            )
-        messages.append("\n".join(lines))
-    return messages

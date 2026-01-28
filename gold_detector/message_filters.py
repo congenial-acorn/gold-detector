@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from .services import PREFERENCE_OPTIONS
 
@@ -135,3 +135,77 @@ def filter_message_for_preferences(
         preferences.get("station_type", ()),
         preferences.get("commodity", ()),
     )
+
+
+def filter_entries_for_preferences(
+    entries: list[dict[str, Any]],
+    preferences: dict[str, list[str]] | None,
+) -> list[dict[str, Any]]:
+    """Filter entries by recipient preferences at data level."""
+    if not preferences:
+        return entries
+
+    station_type_prefs = {p.lower() for p in preferences.get("station_type", [])}
+    commodity_prefs = {c.lower() for c in preferences.get("commodity", [])}
+    powerplay_prefs = {p.lower() for p in preferences.get("powerplay", [])}
+
+    has_market_prefs = station_type_prefs or commodity_prefs
+    has_powerplay_prefs = bool(powerplay_prefs)
+
+    filtered = []
+    for entry in entries:
+        # Skip if no preferences are set
+        if not any([station_type_prefs, commodity_prefs, powerplay_prefs]):
+            filtered.append(entry)
+            continue
+
+        # Powerplay entry
+        if entry.get("is_powerplay"):
+            # If market prefs exist, skip powerplay entries
+            if has_market_prefs:
+                continue
+            if has_powerplay_prefs:
+                power = entry.get("power", "").lower()
+                if not any(name in power for name in powerplay_prefs):
+                    continue
+            filtered.append(entry)
+            continue
+
+        # Market entry
+        passes_filters = True
+
+        # Station type filter
+        if station_type_prefs and "station_type" in entry:
+            station_type = entry["station_type"].lower()
+            matches_station = any(
+                station_type == opt
+                or station_type.startswith(f"{opt} ")
+                or station_type.startswith(f"{opt}(")
+                or f" {opt} " in f" {station_type} "
+                for opt in station_type_prefs
+            )
+            if not matches_station:
+                passes_filters = False
+
+        # Commodity filter
+        if commodity_prefs and passes_filters and "metals" in entry:
+            metals = entry.get("metals", [])
+            has_commodity = any(
+                metal[0].lower() in commodity_prefs for metal in metals
+            )
+            if not has_commodity:
+                passes_filters = False
+
+        # Apply commodity filter if set, even if station_type not set
+        if commodity_prefs and "station_type" not in entry and "metals" in entry:
+            metals = entry.get("metals", [])
+            has_commodity = any(
+                metal[0].lower() in commodity_prefs for metal in metals
+            )
+            if not has_commodity:
+                passes_filters = False
+
+        if passes_filters:
+            filtered.append(entry)
+
+    return filtered

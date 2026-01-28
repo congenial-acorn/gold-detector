@@ -7,14 +7,7 @@ from gold_detector.alert_helpers import (
     GOLD_NUM,
     PALLADIUM_NUM,
     assemble_commodity_links,
-    assemble_hidden_market_messages,
     mask_commodity_links,
-)
-from gold_detector.emitter import (
-    emit_loop_done,
-    send_to_discord,
-    set_emitter,
-    set_loop_done_emitter,
 )
 from gold_detector.http_client import http_get
 from gold_detector.inara_client import get_station_market_urls, get_station_type

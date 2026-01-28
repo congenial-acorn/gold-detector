@@ -95,6 +95,7 @@ client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
+    assert client.user is not None
     print(f"Logged in as {client.user} (ID: {client.user.id})")
     # Parse args when the client is ready
     if len(sys.argv) < 3:
