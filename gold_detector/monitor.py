@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup
