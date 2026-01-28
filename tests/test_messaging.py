@@ -523,5 +523,289 @@ def test_dispatch_from_database_handles_powerplay():
             # For powerplay, station_name should be system_name and metal should be "powerplay"
             assert call_args[1]["system_name"] == "Sol"
             assert call_args[1]["metal"] == "powerplay"
-    
+
     asyncio.run(_run())
+
+
+# Tests for filter_entries_for_preferences() - TDD RED phase
+# These tests should fail because the function doesn't exist yet
+
+
+def test_filter_entries_by_station_type():
+    """Test filtering entries by station_type preference."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    # Entry format matching MarketDatabase read_all_entries output
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000), ("Palladium", 18000)],
+        },
+        {
+            "system_name": "Alpha Centauri",
+            "system_address": "5678",
+            "station_name": "Bravo Station",
+            "station_type": "Outpost",
+            "url": "https://inara.cz/station/5678/",
+            "metals": [("Gold", 30000)],
+        },
+    ]
+
+    # Filter for Starport entries only
+    filtered = filter_entries_for_preferences(entries, {"station_type": ["Starport"]})
+
+    # Should only include Starport entries (Coriolis Starport matches "starport")
+    assert len(filtered) == 1
+    assert filtered[0]["station_name"] == "Abraham Lincoln"
+    assert "starport" in filtered[0]["station_type"].lower()
+
+
+def test_filter_entries_by_commodity():
+    """Test filtering entries by commodity preference."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000), ("Palladium", 18000)],
+        },
+        {
+            "system_name": "Alpha Centauri",
+            "system_address": "5678",
+            "station_name": "Bravo Station",
+            "station_type": "Outpost",
+            "url": "https://inara.cz/station/5678/",
+            "metals": [("Gold", 30000)],
+        },
+    ]
+
+    # Filter for Gold entries only
+    filtered = filter_entries_for_preferences(entries, {"commodity": ["Gold"]})
+
+    # Both entries have Gold, so both should pass
+    assert len(filtered) == 2
+    assert all("Gold" in [m[0] for m in e["metals"]] for e in filtered)
+
+
+def test_filter_entries_by_powerplay():
+    """Test filtering entries by powerplay preference."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "power": "Zachary Hudson",
+            "status": "Acquisition",
+            "progress": 75,
+            "is_powerplay": True,
+        },
+        {
+            "system_name": "Lave",
+            "power": "Aisling Duval",
+            "status": "Expansion",
+            "progress": 50,
+            "is_powerplay": True,
+        },
+    ]
+
+    # Filter for Zachary Hudson only
+    filtered = filter_entries_for_preferences(entries, {"powerplay": ["Zachary Hudson"]})
+
+    # Should only include Zachary Hudson entry
+    assert len(filtered) == 1
+    assert filtered[0]["power"] == "Zachary Hudson"
+
+
+def test_filter_entries_no_preferences_returns_all():
+    """Test that no preferences returns all entries."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000)],
+        },
+        {
+            "system_name": "Sol",
+            "power": "Zachary Hudson",
+            "status": "Acquisition",
+            "progress": 75,
+            "is_powerplay": True,
+        },
+    ]
+
+    # No preferences - should return all entries
+    filtered = filter_entries_for_preferences(entries, {})
+
+    assert len(filtered) == 2
+    assert any(e.get("is_powerplay") for e in filtered)
+    assert any("metals" in e for e in filtered)
+
+
+def test_filter_entries_empty_preferences_returns_all():
+    """Test that empty preference values returns all entries."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000)],
+        },
+    ]
+
+    # Empty preference lists - should return all entries
+    filtered = filter_entries_for_preferences(
+        entries, {"station_type": [], "commodity": [], "powerplay": []}
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0]["station_name"] == "Abraham Lincoln"
+
+
+def test_filter_entries_non_matching_filtered_out():
+    """Test that entries without matching preferences are filtered out."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000)],
+        },
+        {
+            "system_name": "Alpha Centauri",
+            "system_address": "5678",
+            "station_name": "Bravo Station",
+            "station_type": "Ocellus Starport",
+            "url": "https://inara.cz/station/5678/",
+            "metals": [("Palladium", 20000)],
+        },
+    ]
+
+    # Filter for Starport with Gold - second entry should be filtered out
+    filtered = filter_entries_for_preferences(
+        entries, {"station_type": ["Starport"], "commodity": ["Gold"]}
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0]["station_name"] == "Abraham Lincoln"
+    assert all("Gold" in [m[0] for m in e["metals"]] for e in filtered)
+
+
+def test_filter_entries_mixed_some_pass_some_filtered():
+    """Test filtering with mixed entries - some pass, some filtered."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000), ("Palladium", 18000)],
+        },
+        {
+            "system_name": "Alpha Centauri",
+            "system_address": "5678",
+            "station_name": "Bravo Station",
+            "station_type": "Outpost",
+            "url": "https://inara.cz/station/5678/",
+            "metals": [("Palladium", 20000)],
+        },
+        {
+            "system_name": "Sol",
+            "power": "Zachary Hudson",
+            "status": "Acquisition",
+            "progress": 75,
+            "is_powerplay": True,
+        },
+    ]
+
+    # Filter for Starport with Gold AND Zachary Hudson powerplay
+    # Only first entry should pass (has both Starport and Gold)
+    filtered = filter_entries_for_preferences(
+        entries,
+        {"station_type": ["Starport"], "commodity": ["Gold"], "powerplay": ["Zachary Hudson"]},
+    )
+
+    # Only market entry with Starport and Gold should pass
+    assert len(filtered) == 1
+    assert filtered[0]["station_name"] == "Abraham Lincoln"
+
+
+def test_filter_entries_case_insensitive():
+    """Test that filtering is case-insensitive."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000)],
+        },
+    ]
+
+    # Use lowercase preference - should still match
+    filtered = filter_entries_for_preferences(
+        entries, {"station_type": ["starport"], "commodity": ["gold"]}
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0]["station_name"] == "Abraham Lincoln"
+
+
+def test_filter_entries_all_filters_must_pass():
+    """Test that entries must pass ALL applicable filters (AND logic)."""
+    from gold_detector.message_filters import filter_entries_for_preferences  # noqa: F401
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metals": [("Gold", 25000)],
+        },
+        {
+            "system_name": "Alpha Centauri",
+            "system_address": "5678",
+            "station_name": "Bravo Station",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/5678/",
+            "metals": [("Palladium", 20000)],
+        },
+    ]
+
+    # Both have Starport, but only first has Gold
+    # With both filters active, only first should pass
+    filtered = filter_entries_for_preferences(
+        entries, {"station_type": ["Starport"], "commodity": ["Gold"]}
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0]["station_name"] == "Abraham Lincoln"
+    assert "Gold" in [m[0] for m in filtered[0]["metals"]]
