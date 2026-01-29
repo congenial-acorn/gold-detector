@@ -32,6 +32,9 @@ class GoldRunner:
 
         while True:
             try:
+                if hasattr(gold, "set_loop_done_emitter") and self.loop_done:
+                    gold.set_loop_done_emitter(self.loop_done)
+
                 if hasattr(gold, "main") and callable(getattr(gold, "main")):
                     self.logger.info("Starting gold.py main loop")
                     gold.main()

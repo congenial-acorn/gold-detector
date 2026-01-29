@@ -39,6 +39,7 @@ class DiscordMessenger:
 
     def loop_done_from_thread(self) -> None:
         """Dispatch messages from database (called from gold.py thread)."""
+        self.logger.info("[loop_done_from_thread] Scheduling dispatch to event loop")
         if self.market_db:
             asyncio.run_coroutine_threadsafe(
                 self.dispatch_from_database(self.market_db), self.client.loop
@@ -208,7 +209,7 @@ class DiscordMessenger:
     async def dispatch_from_database(self, market_db: MarketDatabase) -> None:
         """
         Read all entries from MarketDatabase and dispatch messages to guilds and DM subscribers.
-        
+
         Per-recipient flow:
         - For each recipient, filter entries at data level
         - Check cooldown per-entry before including in message
@@ -216,6 +217,20 @@ class DiscordMessenger:
         - Integrate ping in message (not separate loop)
         - Mark sent after successful delivery
         """
+        if not market_db:
+            self.logger.warning("[dispatch_from_database] No market_db provided")
+            return
+
+        # Read all entries from database
+        all_data = market_db.read_all_entries()
+
+        self.logger.info(
+            "[dispatch_from_database] Starting - %d systems in database, %d guilds, %d subscribers",
+            len(all_data),
+            len(self.client.guilds),
+            len(self.subscribers.all()),
+        )
+
         if not market_db:
             self.logger.warning("[dispatch_from_database] No market_db provided")
             return
@@ -228,7 +243,7 @@ class DiscordMessenger:
             if self.opt_outs.is_opted_out(guild.id):
                 self.logger.debug("[%s] Skipping - guild opted out", guild.name)
                 continue
-            
+
             if self.settings.debug_mode and self.settings.debug_server_id:
                 if guild.id != self.settings.debug_server_id:
                     self.logger.debug(
@@ -237,27 +252,30 @@ class DiscordMessenger:
                         self.settings.debug_server_id,
                     )
                     continue
-            
+
             prefs = self.guild_prefs.get_preferences("guild", guild.id)
-            
+
             # Collect entries that pass filter + cooldown
             market_lines = []
             powerplay_lines = []
             cooldown_keys = []
-            
+            candidate_count = 0
+
             for system_name, system_data in all_data.items():
                 system_address = system_data.get("system_address", "")
-                
+
                 # Process stations
                 if "stations" in system_data:
                     for station_name, station_data in system_data["stations"].items():
                         station_type = station_data.get("station_type", "Unknown")
                         url = station_data.get("url", "")
-                        
+
                         if "metals" in station_data:
                             for metal, metal_data in station_data["metals"].items():
                                 stock = metal_data.get("stock", 0)
-                                
+
+                                candidate_count += 1
+
                                 # Check preferences at data level
                                 if not self._passes_station_type_filter(station_type, prefs):
                                     continue
@@ -286,14 +304,16 @@ class DiscordMessenger:
                                     "stock": stock,
                                 })
                                 cooldown_keys.append((system_name, station_name, metal))
-                
+
                 # Process powerplay
                 if "powerplay" in system_data and system_data["powerplay"]:
                     powerplay = system_data["powerplay"]
                     power = powerplay.get("power")
                     status = powerplay.get("status")
-                    
+
                     if power and status and status in ("Fortified", "Stronghold"):
+                        candidate_count += 1
+
                         if self._passes_powerplay_filter(power, prefs):
                             if market_db.check_cooldown(
                                 system_name=system_name,
@@ -309,13 +329,24 @@ class DiscordMessenger:
                                     "status": status,
                                 })
                                 cooldown_keys.append((system_name, system_name, "powerplay"))
-            
+
+            self.logger.debug(
+                "[dispatch_from_database] Guild %s: %d candidate entries, %d passed filters",
+                guild.name,
+                candidate_count,
+                len(market_lines) + len(powerplay_lines),
+            )
+
             if not market_lines and not powerplay_lines:
+                self.logger.debug(
+                    "[dispatch_from_database] Guild %s: no entries to send (0 passed filters)",
+                    guild.name,
+                )
                 continue
-            
+
             # Build message inline
             message = self._build_message(market_lines, powerplay_lines)
-            
+
             # Add ping if enabled
             if self.guild_prefs.pings_enabled(guild.id):
                 role = self._find_role_by_name(guild)
@@ -448,13 +479,13 @@ class DiscordMessenger:
                                     "status": status,
                                 })
                                 cooldown_keys.append((system_name, system_name, "powerplay"))
-            
+
             if not market_lines and not powerplay_lines:
                 continue
-            
+
             # Build message inline
             message = self._build_message(market_lines, powerplay_lines)
-            
+
             # No ping for DMs
             
             try:
