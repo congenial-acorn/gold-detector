@@ -39,9 +39,6 @@ def _settings() -> Settings:
     )
 
 
-    asyncio.run(_run())
-
-
 def test_dispatch_from_database_reads_entries():
     """Test that dispatch_from_database reads and iterates MarketDatabase entries."""
     from unittest.mock import Mock, AsyncMock

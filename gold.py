@@ -9,6 +9,7 @@ from gold_detector.alert_helpers import (
     assemble_commodity_links,
     mask_commodity_links,
 )
+from gold_detector.emitter import emit_loop_done, set_loop_done_emitter
 from gold_detector.http_client import http_get
 from gold_detector.inara_client import get_station_market_urls, get_station_type
 from gold_detector.market_database import MarketDatabase
