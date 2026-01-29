@@ -7,7 +7,7 @@
 /dataSources/
 /dataSources.local.xml
 /.idea/
-
+market_database.json
 # Secrets / env files
 .env
 !.env.example        # keep a template in the repo
