@@ -1,4 +1,3 @@
-import asyncio
 import sys
 from pathlib import Path
 
@@ -69,6 +68,7 @@ async def on_ready():
         status=discord.Status.online,
     )
     logger.info("=== Bot Ready ===")
+    assert client.user is not None
     logger.info("Logged in as %s (ID: %s)", client.user, client.user.id)
     logger.info("Connected to %s guilds", len(client.guilds))
     logger.info(
@@ -101,7 +101,7 @@ async def on_ready():
             logger.warning("Slash command sync failed: %s", exc)
 
         GoldRunner(
-            emit=messenger.enqueue_from_thread,
+            emit=None,
             loop_done=messenger.loop_done_from_thread,
             logger=logger.getChild("gold_runner"),
         ).start()
