@@ -88,8 +88,8 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
                         continue
                     st_name, system_name, system_address = header
                     stations_checked += 1
-                    
-                    scanned_systems.add(system_address)
+
+                    scanned_systems.add(system_name)
 
                     for metal in metals:
                         link = soup.find("a", string=metal)

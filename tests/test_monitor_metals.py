@@ -98,4 +98,4 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     # Verify end_scan was called with a set containing the scanned system
     call_args = mock_db.end_scan.call_args
     assert isinstance(call_args[0][0], set)
-    assert "https://inara.cz/elite/system/456/" in call_args[0][0]
+    assert "Example System" in call_args[0][0]
