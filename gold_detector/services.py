@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Dict, List, Literal, Optional, Sequence, Set, Tuple
 
 from .config import PROJECT_ROOT, sanitize_channel_name, sanitize_role_name
-from .utils import now
 
 PREFERENCE_OPTIONS: Dict[str, Tuple[str, ...]] = {
     "station_type": ("Starport", "Outpost", "Surface Port"),

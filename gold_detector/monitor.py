@@ -3,8 +3,7 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
@@ -19,16 +18,6 @@ logger = logging.getLogger("gold.monitor")
 MONITOR_INTERVAL_SECONDS = float(os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(1800)))
 PRICE_THRESHOLD = 28_000
 STOCK_THRESHOLD = 15_000
-
-
-@dataclass
-class HiddenMarketEntry:
-    system_name: str
-    system_address: str
-    station_name: str
-    station_type: str
-    url: str
-    metals: List[Tuple[str, int]] = field(default_factory=list)
 
 
 def _parse_header(soup: BeautifulSoup, url: str):
@@ -68,25 +57,7 @@ def _update_systems(
         metals.append(metal)
 
 
-def _upsert_hidden_entry(
-    entries: Dict[Tuple[str, str], HiddenMarketEntry],
-    data: HiddenMarketEntry,
-    metal: str,
-    stock: int,
-) -> None:
-    key = (data.system_address, data.station_name)
-    entry = entries.get(key)
-    if not entry:
-        data.metals.append((metal, stock))
-        entries[key] = data
-        return
-    if all(m != metal for m, _ in entry.metals):
-        entry.metals.append((metal, stock))
-
-
 def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[MarketDatabase] = None):
-    last_ping: Dict[str, datetime.datetime] = {}
-    cooldown = datetime.timedelta(hours=cooldown_hours)
     logger.info(
         "Starting monitor loop: checking %s metals with %sh cooldown",
         len(metals),
@@ -96,31 +67,16 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
     while True:
         try:
             systems: Dict[str, List[str]] = {}
-            messages: Dict[Tuple[str, str], HiddenMarketEntry] = {}
-            now = datetime.datetime.now(datetime.timezone.utc)
             logger.info("=== Beginning new scan cycle ===")
-            
+
             # Begin scan if using database
             if market_db:
                 market_db.begin_scan()
-            
+
             scanned_systems = set()
             market_urls = get_station_market_urls(near_urls)
 
-            if not market_db:
-                alive_ids = set()
-                for u in market_urls:
-                    match = re.search(r"/(\d+)/$", u)
-                    if match:
-                        alive_ids.add(match.group(1))
-                pruned = [k for k in list(last_ping) if k.split("-", 1)[0] not in alive_ids]
-                for key in pruned:
-                    del last_ping[key]
-                if pruned:
-                    logger.info("Pruned %s stale cooldown entries", len(pruned))
-
             stations_checked = 0
-            alerts_sent = 0
 
             for url in market_urls:
                 try:
@@ -132,8 +88,8 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
                         continue
                     st_name, system_name, system_address = header
                     stations_checked += 1
-                    
-                    scanned_systems.add(system_address)
+
+                    scanned_systems.add(system_name)
 
                     for metal in metals:
                         link = soup.find("a", string=metal)
@@ -184,77 +140,21 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
                                     metal=metal,
                                     stock=stock,
                                 )
-                                
-                                cooldown_seconds = cooldown_hours * 3600
-                                if market_db.check_cooldown(
-                                    system_name=system_name,
-                                    station_name=st_name,
-                                    metal=metal,
-                                    recipient_type="monitor",
-                                    recipient_id="default",
-                                    cooldown_seconds=cooldown_seconds,
-                                ):
-                                    data = HiddenMarketEntry(
-                                        system_name=system_name,
-                                        system_address=system_address,
-                                        station_name=st_name,
-                                        station_type=st_type,
-                                        url=url,
-                                    )
-                                    _upsert_hidden_entry(messages, data, metal, stock)
-                                    alerts_sent += 1
-                                    logger.info(
-                                        "ALERT: %s @ %s - price=%s, stock=%s, cooldown until %s",
-                                        metal,
-                                        st_name,
-                                        buy_price,
-                                        stock,
-                                        now + cooldown,
-                                    )
-                                    market_db.mark_sent(
-                                        system_name=system_name,
-                                        station_name=st_name,
-                                        metal=metal,
-                                        recipient_type="monitor",
-                                        recipient_id="default",
-                                    )
-                                else:
-                                    logger.debug(
-                                        "Skipping %s @ %s - still on cooldown",
-                                        metal,
-                                        st_name,
-                                    )
+                                logger.info(
+                                    "Found: %s @ %s - price=%s, stock=%s",
+                                    metal,
+                                    st_name,
+                                    buy_price,
+                                    stock,
+                                )
                             else:
-                                key = f"{station_id}-{metal}"
-                                last_time = last_ping.get(key)
-
-                                if not last_time or (now - last_time) > cooldown:
-                                    data = HiddenMarketEntry(
-                                        system_name=system_name,
-                                        system_address=system_address,
-                                        station_name=st_name,
-                                        station_type=st_type,
-                                        url=url,
-                                    )
-                                    _upsert_hidden_entry(messages, data, metal, stock)
-                                    last_ping[key] = now
-                                    alerts_sent += 1
-                                    logger.info(
-                                        "ALERT: %s @ %s - price=%s, stock=%s, cooldown until %s",
-                                        metal,
-                                        st_name,
-                                        buy_price,
-                                        stock,
-                                        now + cooldown,
-                                    )
-                                else:
-                                    remaining = cooldown - (now - last_time)
-                                    logger.debug(
-                                        "Skipping %s @ %s - still on cooldown (%.1fh remaining)",
-                                        metal,
-                                        st_name,
-                                        remaining.total_seconds() / 3600,
-                                    )
+                                logger.info(
+                                    "Found: %s @ %s - price=%s, stock=%s",
+                                    metal,
+                                    st_name,
+                                    buy_price,
+                                    stock,
+                                )
                 except Exception as exc:  # noqa: BLE001
                     logger.error(
                         "Error processing station %s: %s", url, exc, exc_info=True
@@ -262,9 +162,8 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
                     continue
 
             logger.info(
-                "Scan complete: checked %s stations, sent %s alerts",
+                "Scan complete: checked %s stations",
                 stations_checked,
-                alerts_sent,
             )
             logger.info("Starting Powerplay check.")
 
