@@ -249,6 +249,50 @@ def test_write_powerplay_entry_updates_existing_powerplay(db, db_path):
     assert data["Sol"]["powerplay"]["progress"] == 90
 
 
+def test_powerplay_cooldown_tracking(db, db_path):
+    """Test that powerplay cooldowns are stored and checked correctly."""
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+    )
+
+    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is True
+
+    db.mark_powerplay_sent("Sol", "guild", "123")
+
+    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is False
+
+    assert db.check_powerplay_cooldown("Sol", "guild", "456", 3600) is True
+
+
+def test_powerplay_cooldown_persists_across_updates(db, db_path):
+    """Test that cooldowns survive write_powerplay_entry calls (CRITICAL)."""
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+    )
+
+    db.mark_powerplay_sent("Sol", "guild", "123")
+
+    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is False
+
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        power="Zachary Hudson",
+        status="Stronghold",
+        progress=80,
+    )
+
+    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is False
+
+
 # ============================================================================
 # read_all_entries() tests
 # ============================================================================
