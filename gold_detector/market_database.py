@@ -143,7 +143,7 @@ class MarketDatabase:
         """
         Write or update powerplay data for a system.
         
-        Preserves existing station/metal data when updating powerplay info.
+        Preserves existing station/metal data and cooldowns when updating powerplay info.
         
         Args:
             system_name: Name of the system
@@ -166,11 +166,16 @@ class MarketDatabase:
             # Update system address
             data[system_name]["system_address"] = system_address
             
+            existing_cooldowns = {}
+            if system_name in data and "powerplay" in data[system_name]:
+                existing_cooldowns = data[system_name]["powerplay"].get("cooldowns", {})
+            
             # Update powerplay data
             data[system_name]["powerplay"] = {
                 "power": power,
                 "status": status,
-                "progress": progress
+                "progress": progress,
+                "cooldowns": existing_cooldowns,
             }
             
             # Ensure stations dict exists
@@ -286,6 +291,70 @@ class MarketDatabase:
             # Set current timestamp
             metal_data["cooldowns"][recipient_type][recipient_id] = time.time()
             
+            self._save(data)
+    
+    def check_powerplay_cooldown(
+        self,
+        system_name: str,
+        recipient_type: str,
+        recipient_id: str,
+        cooldown_seconds: float,
+    ) -> bool:
+        """
+        Check if powerplay cooldown has expired for a recipient.
+        
+        Args:
+            system_name: Name of the system
+            recipient_type: Type of recipient ("guild" or "user")
+            recipient_id: Unique recipient ID
+            cooldown_seconds: Cooldown duration in seconds
+            
+        Returns:
+            True if no cooldown exists or cooldown has expired, False otherwise
+        """
+        with self._lock:
+            data = self._load()
+            if system_name not in data:
+                return True
+            if "powerplay" not in data[system_name]:
+                return True
+            powerplay = data[system_name]["powerplay"]
+            if "cooldowns" not in powerplay:
+                return True
+            if recipient_type not in powerplay["cooldowns"]:
+                return True
+            if recipient_id not in powerplay["cooldowns"][recipient_type]:
+                return True
+            timestamp = powerplay["cooldowns"][recipient_type][recipient_id]
+            elapsed = time.time() - timestamp
+            return elapsed >= cooldown_seconds
+    
+    def mark_powerplay_sent(
+        self,
+        system_name: str,
+        recipient_type: str,
+        recipient_id: str,
+    ) -> None:
+        """
+        Mark powerplay alert as sent for cooldown tracking.
+        
+        Args:
+            system_name: Name of the system
+            recipient_type: Type of recipient ("guild" or "user")
+            recipient_id: Unique recipient ID
+        """
+        with self._lock:
+            data = self._load()
+            if system_name not in data:
+                return
+            if "powerplay" not in data[system_name]:
+                return
+            powerplay = data[system_name]["powerplay"]
+            if "cooldowns" not in powerplay:
+                powerplay["cooldowns"] = {}
+            if recipient_type not in powerplay["cooldowns"]:
+                powerplay["cooldowns"][recipient_type] = {}
+            powerplay["cooldowns"][recipient_type][recipient_id] = time.time()
             self._save(data)
     
     def prune_stale(self, current_systems: Set[str], cooldown_ttl_seconds: float = 0.05) -> None:

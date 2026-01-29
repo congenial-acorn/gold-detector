@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -39,10 +40,27 @@ class DiscordMessenger:
 
     def loop_done_from_thread(self) -> None:
         """Dispatch messages from database (called from gold.py thread)."""
+        if not self.market_db:
+            self.logger.warning("[loop_done_from_thread] No market_db configured")
+            return
+
+        loop = getattr(self.client, "loop", None)
+        if not loop:
+            self.logger.error("[loop_done_from_thread] Client event loop not available")
+            return
+
         self.logger.info("[loop_done_from_thread] Scheduling dispatch to event loop")
-        if self.market_db:
-            asyncio.run_coroutine_threadsafe(
-                self.dispatch_from_database(self.market_db), self.client.loop
+        try:
+            fut = asyncio.run_coroutine_threadsafe(
+                self.dispatch_from_database(self.market_db),
+                loop
+            )
+            fut.result(timeout=60)
+        except concurrent.futures.TimeoutError:
+            self.logger.error("[loop_done_from_thread] Dispatch timed out after 60s")
+        except Exception as exc:
+            self.logger.error(
+                "[loop_done_from_thread] Dispatch failed: %s", exc, exc_info=True
             )
 
     async def start_background_tasks(self) -> None:
@@ -259,6 +277,7 @@ class DiscordMessenger:
             market_lines = []
             powerplay_lines = []
             cooldown_keys = []
+            powerplay_systems_to_mark = []
             candidate_count = 0
 
             for system_name, system_data in all_data.items():
@@ -315,10 +334,8 @@ class DiscordMessenger:
                         candidate_count += 1
 
                         if self._passes_powerplay_filter(power, prefs):
-                            if market_db.check_cooldown(
+                            if market_db.check_powerplay_cooldown(
                                 system_name=system_name,
-                                station_name=system_name,
-                                metal="powerplay",
                                 recipient_type="guild",
                                 recipient_id=str(guild.id),
                                 cooldown_seconds=self.settings.cooldown_seconds
@@ -328,7 +345,7 @@ class DiscordMessenger:
                                     "power": power,
                                     "status": status,
                                 })
-                                cooldown_keys.append((system_name, system_name, "powerplay"))
+                                powerplay_systems_to_mark.append(system_name)
 
             self.logger.debug(
                 "[dispatch_from_database] Guild %s: %d candidate entries, %d passed filters",
@@ -371,6 +388,8 @@ class DiscordMessenger:
                 # Mark cooldowns AFTER sending message
                 for system_name, station_name, metal in cooldown_keys:
                     market_db.mark_sent(system_name, station_name, metal, "guild", str(guild.id))
+                for system_name in powerplay_systems_to_mark:
+                    market_db.mark_powerplay_sent(system_name, "guild", str(guild.id))
                 
                 self.logger.info(
                     "[%s] Alert sent to #%s", guild.name, channel.name
@@ -414,6 +433,7 @@ class DiscordMessenger:
             market_lines = []
             powerplay_lines = []
             cooldown_keys = []
+            powerplay_systems_to_mark = []
             
             for system_name, system_data in all_data.items():
                 system_address = system_data.get("system_address", "")
@@ -465,10 +485,8 @@ class DiscordMessenger:
                     
                     if power and status and status in ("Fortified", "Stronghold"):
                         if self._passes_powerplay_filter(power, prefs):
-                            if market_db.check_cooldown(
+                            if market_db.check_powerplay_cooldown(
                                 system_name=system_name,
-                                station_name=system_name,
-                                metal="powerplay",
                                 recipient_type="user",
                                 recipient_id=str(user_id),
                                 cooldown_seconds=self.settings.cooldown_seconds
@@ -478,7 +496,7 @@ class DiscordMessenger:
                                     "power": power,
                                     "status": status,
                                 })
-                                cooldown_keys.append((system_name, system_name, "powerplay"))
+                                powerplay_systems_to_mark.append(system_name)
 
             if not market_lines and not powerplay_lines:
                 continue
@@ -495,6 +513,8 @@ class DiscordMessenger:
                 # Mark cooldowns AFTER sending message
                 for system_name, station_name, metal in cooldown_keys:
                     market_db.mark_sent(system_name, station_name, metal, "user", str(user_id))
+                for system_name in powerplay_systems_to_mark:
+                    market_db.mark_powerplay_sent(system_name, "user", str(user_id))
                 
                 self.logger.debug("[DM] Sent to user %s", user_id)
             except discord.NotFound:
