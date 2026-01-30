@@ -8,6 +8,7 @@ from .alert_helpers import (
     GOLD_NUM,
     PALLADIUM_NUM,
     assemble_commodity_links,
+    mask_commodity_links,
 )
 from .http_client import http_get
 from .market_database import MarketDatabase
@@ -61,7 +62,9 @@ def _build_commodity_ids(system: List[str]) -> List[int]:
     return ids
 
 
-def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None) -> Set[str]:
+def get_powerplay_status(
+    systems, market_db: Optional[MarketDatabase] = None
+) -> Set[str]:
     """Check each system in the list for Powerplay status."""
     processed_systems: Set[str] = set()
     for system in systems:
@@ -108,17 +111,6 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None) ->
             )
             logger.info(msg)
 
-            # Write powerplay entry to database if available
-            if market_db:
-                market_db.write_powerplay_entry(
-                    system_name=system_name or "",
-                    system_address=system_url,
-                    power=fields["power"],
-                    status=status_text,
-                    progress=fields["progress"],
-                )
-                processed_systems.add(system_name or "")
-
             ids = _build_commodity_ids(system)
 
             if status_text == "Unoccupied":
@@ -137,13 +129,26 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None) ->
                         system_name or system_url,
                     )
                     continue
+
+                masked_links = mask_commodity_links(commodity_url)
+                if market_db:
+                    market_db.write_powerplay_entry(
+                        system_name=system_name or "",
+                        system_address=system_url,
+                        power=fields["power"],
+                        status=status_text,
+                        progress=fields["progress"],
+                        commodity_urls=masked_links,
+                    )
+                    processed_systems.add(system_name or "")
+
                 logger.info(
                     "Powerplay opportunity: %s is a %s %s system with acquisition systems nearby",
                     system_name,
-                    fields['power'],
+                    fields["power"],
                     status_text,
                 )
-                    
+
             elif status_text == "Stronghold":
                 commodity_url = assemble_commodity_links(
                     ids, system_name or "", 30, fetch=http_get
@@ -154,10 +159,23 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None) ->
                         system_name or system_url,
                     )
                     continue
+
+                masked_links = mask_commodity_links(commodity_url)
+                if market_db:
+                    market_db.write_powerplay_entry(
+                        system_name=system_name or "",
+                        system_address=system_url,
+                        power=fields["power"],
+                        status=status_text,
+                        progress=fields["progress"],
+                        commodity_urls=masked_links,
+                    )
+                    processed_systems.add(system_name or "")
+
                 logger.info(
                     "Powerplay opportunity: %s is a %s %s system",
                     system_name,
-                    fields['power'],
+                    fields["power"],
                     status_text,
                 )
         except Exception as exc:  # noqa: BLE001
