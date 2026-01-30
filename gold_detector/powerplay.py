@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Set
 
 from bs4 import BeautifulSoup
 
@@ -61,8 +61,9 @@ def _build_commodity_ids(system: List[str]) -> List[int]:
     return ids
 
 
-def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
+def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None) -> Set[str]:
     """Check each system in the list for Powerplay status."""
+    processed_systems: Set[str] = set()
     for system in systems:
         system_url = system[0]
         try:
@@ -75,6 +76,8 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
                 raw_name = h2.get_text(" ", strip=True)
                 system_name = re.sub(r"[\uE000-\uF8FF]", "", raw_name)
                 system_name = re.sub(r"\\u[0-9a-fA-F]{4}", "", system_name).strip()
+                # Strip unicode variation selectors (VS1-VS16) to prevent name mismatch with station pages
+                system_name = re.sub(r"[\uFE00-\uFE0F]", "", system_name).strip()
 
             label = soup.find("span", string=re.compile(r"Powerplay", re.IGNORECASE))
             if not label:
@@ -114,6 +117,7 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
                     status=status_text,
                     progress=fields["progress"],
                 )
+                processed_systems.add(system_name or "")
 
             ids = _build_commodity_ids(system)
 
@@ -164,3 +168,5 @@ def get_powerplay_status(systems, market_db: Optional[MarketDatabase] = None):
                 exc_info=True,
             )
             continue
+
+    return processed_systems

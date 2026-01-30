@@ -169,7 +169,10 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
 
             system_list = [[url] + found for url, found in systems.items()]
             if market_db:
-                get_powerplay_status(system_list, market_db=market_db)
+                powerplay_systems = get_powerplay_status(system_list, market_db=market_db)
+                scanned_systems.update(powerplay_systems)
+                logger.info("Merged powerplay systems: added %d powerplay systems to scanned set (total: %d)",
+                          len(powerplay_systems), len(scanned_systems))
             else:
                 get_powerplay_status(system_list)
 
