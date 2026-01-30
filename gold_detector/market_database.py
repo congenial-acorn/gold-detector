@@ -6,10 +6,13 @@ market data with atomic writes and cooldown tracking per station/metal/recipient
 """
 
 import json
+import logging
 import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Set
+
+logger = logging.getLogger("gold.database")
 
 
 class MarketDatabase:
@@ -30,6 +33,7 @@ class MarketDatabase:
             path: Path to the JSON database file
         """
         self.path = path
+        logger.debug("MarketDatabase initialized with path: %s", self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._data: Dict[str, Any] = self._load()
@@ -51,14 +55,20 @@ class MarketDatabase:
     def _save(self, data: Dict[str, Any]) -> None:
         """
         Save data to disk using atomic write pattern.
-        
+
         Args:
             data: Dictionary to save
         """
+        logger.debug("_save() called: path=%s, writing %d systems", self.path, len(data))
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, sort_keys=True)
-        tmp.replace(self.path)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, sort_keys=True)
+            tmp.replace(self.path)
+            logger.debug("Successfully wrote data to %s (atomic replace complete)", self.path)
+        except Exception as e:
+            logger.error("Failed to save database to %s: %s", self.path, e, exc_info=True)
+            raise
     
     def write_market_entry(
         self,
@@ -152,6 +162,8 @@ class MarketDatabase:
             status: Powerplay status (e.g., "Acquisition")
             progress: Progress percentage (0-100)
         """
+        logger.info("write_powerplay_entry called: system_name=%s, system_address=%s, power=%s, status=%s, progress=%s",
+                    system_name, system_address, power, status, progress)
         with self._lock:
             data = self._load()
             
@@ -181,8 +193,12 @@ class MarketDatabase:
             # Ensure stations dict exists
             if "stations" not in data[system_name]:
                 data[system_name]["stations"] = {}
-            
+
+            logger.debug("About to save powerplay data for system %s: powerplay=%s", system_name, data[system_name].get("powerplay"))
+
             self._save(data)
+
+            logger.info("Successfully saved powerplay entry for system %s", system_name)
     
     def read_all_entries(self) -> Dict[str, Any]:
         """
@@ -370,6 +386,7 @@ class MarketDatabase:
             cooldown_ttl_seconds: Time-to-live for cooldowns in seconds (default: 0.05 seconds).
                                  For production use, pass 48 * 3600 (48 hours).
         """
+        logger.info("prune_stale called: current_systems=%d, cooldown_ttl=%s seconds", len(current_systems), cooldown_ttl_seconds)
         with self._lock:
             data = self._load()
             systems_to_remove = []
@@ -377,6 +394,7 @@ class MarketDatabase:
             for system_name in data.keys():
                 # Keep if in current systems
                 if system_name in current_systems:
+                    logger.debug("Keeping system %s (in current_systems)", system_name)
                     continue
                 
                 # Check if any cooldowns are still active
@@ -406,8 +424,11 @@ class MarketDatabase:
             
             # Remove stale systems
             for system_name in systems_to_remove:
+                logger.info("Removing system: %s (not in current_systems and no active cooldowns)", system_name)
                 del data[system_name]
-            
+
+            logger.info("prune_stale complete: kept %d, removed %d systems", len(data) - len(systems_to_remove), len(systems_to_remove))
+
             self._save(data)
     
     def begin_scan(self) -> None:
@@ -428,6 +449,7 @@ class MarketDatabase:
         Args:
             scanned_systems: Set of system names that were seen in the scan
         """
+        logger.info("end_scan called: scanned_systems=%d, systems=%s", len(scanned_systems), list(scanned_systems)[:10])
         with self._lock:
             self._scan_in_progress = False
         
