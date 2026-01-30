@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Set
+from typing import Any, Dict, List, Set, Tuple
 
 logger = logging.getLogger("gold.database")
 
@@ -18,17 +18,17 @@ logger = logging.getLogger("gold.database")
 class MarketDatabase:
     """
     Thread-safe database for Elite Dangerous market data and cooldown tracking.
-    
+
     Stores system/station/metal data with powerplay information and tracks
     cooldowns per (station, metal, recipient_type, recipient_id) tuple.
-    
+
     Uses atomic writes (temp file + rename) to prevent corruption.
     """
-    
+
     def __init__(self, path: Path):
         """
         Initialize MarketDatabase.
-        
+
         Args:
             path: Path to the JSON database file
         """
@@ -38,11 +38,11 @@ class MarketDatabase:
         self._lock = threading.Lock()
         self._data: Dict[str, Any] = self._load()
         self._scan_in_progress = False
-    
+
     def _load(self) -> Dict[str, Any]:
         """
         Load data from disk.
-        
+
         Returns:
             Dictionary containing all market data, or empty dict if file doesn't exist
         """
@@ -51,7 +51,7 @@ class MarketDatabase:
                 return json.load(f)
         except Exception:
             return {}
-    
+
     def _save(self, data: Dict[str, Any]) -> None:
         """
         Save data to disk using atomic write pattern.
@@ -59,17 +59,23 @@ class MarketDatabase:
         Args:
             data: Dictionary to save
         """
-        logger.debug("_save() called: path=%s, writing %d systems", self.path, len(data))
+        logger.debug(
+            "_save() called: path=%s, writing %d systems", self.path, len(data)
+        )
         tmp = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, sort_keys=True)
             tmp.replace(self.path)
-            logger.debug("Successfully wrote data to %s (atomic replace complete)", self.path)
+            logger.debug(
+                "Successfully wrote data to %s (atomic replace complete)", self.path
+            )
         except Exception as e:
-            logger.error("Failed to save database to %s: %s", self.path, e, exc_info=True)
+            logger.error(
+                "Failed to save database to %s: %s", self.path, e, exc_info=True
+            )
             raise
-    
+
     def write_market_entry(
         self,
         system_name: str,
@@ -82,10 +88,10 @@ class MarketDatabase:
     ) -> None:
         """
         Write or update a market entry for a station's metal stock.
-        
+
         Creates system/station/metal hierarchy as needed. Preserves existing
         cooldown data when updating stock.
-        
+
         Args:
             system_name: Name of the system
             system_address: Unique system address
@@ -97,51 +103,53 @@ class MarketDatabase:
         """
         with self._lock:
             data = self._load()
-            
+
             # Ensure system exists
             if system_name not in data:
                 data[system_name] = {
                     "system_address": system_address,
                     "powerplay": {},
-                    "stations": {}
+                    "stations": {},
                 }
-            
+
             # Update system address
             data[system_name]["system_address"] = system_address
-            
+
             # Ensure stations dict exists
             if "stations" not in data[system_name]:
                 data[system_name]["stations"] = {}
-            
+
             # Ensure station exists
             if station_name not in data[system_name]["stations"]:
                 data[system_name]["stations"][station_name] = {
                     "station_type": station_type,
                     "url": url,
-                    "metals": {}
+                    "metals": {},
                 }
-            
+
             # Update station info
             data[system_name]["stations"][station_name]["station_type"] = station_type
             data[system_name]["stations"][station_name]["url"] = url
-            
+
             # Ensure metals dict exists
             if "metals" not in data[system_name]["stations"][station_name]:
                 data[system_name]["stations"][station_name]["metals"] = {}
-            
+
             # Preserve existing cooldowns if metal entry exists
             existing_cooldowns = {}
             if metal in data[system_name]["stations"][station_name]["metals"]:
-                existing_cooldowns = data[system_name]["stations"][station_name]["metals"][metal].get("cooldowns", {})
-            
+                existing_cooldowns = data[system_name]["stations"][station_name][
+                    "metals"
+                ][metal].get("cooldowns", {})
+
             # Update metal entry
             data[system_name]["stations"][station_name]["metals"][metal] = {
                 "stock": stock,
-                "cooldowns": existing_cooldowns
+                "cooldowns": existing_cooldowns,
             }
-            
+
             self._save(data)
-    
+
     def write_powerplay_entry(
         self,
         system_name: str,
@@ -149,67 +157,81 @@ class MarketDatabase:
         power: str,
         status: str,
         progress: int,
+        commodity_urls: str = "",
     ) -> None:
         """
         Write or update powerplay data for a system.
-        
+
         Preserves existing station/metal data and cooldowns when updating powerplay info.
-        
+
         Args:
             system_name: Name of the system
             system_address: Unique system address
             power: Powerplay faction name (e.g., "Zachary Hudson")
             status: Powerplay status (e.g., "Acquisition")
             progress: Progress percentage (0-100)
+            commodity_urls: Markdown-formatted URLs for relevant commodity information (default: "")
         """
-        logger.info("write_powerplay_entry called: system_name=%s, system_address=%s, power=%s, status=%s, progress=%s",
-                    system_name, system_address, power, status, progress)
+        logger.info(
+            "write_powerplay_entry called: system_name=%s, system_address=%s, power=%s, status=%s, progress=%s, commodity_urls=%s",
+            system_name,
+            system_address,
+            power,
+            status,
+            progress,
+            commodity_urls,
+        )
         with self._lock:
             data = self._load()
-            
+
             # Ensure system exists
             if system_name not in data:
                 data[system_name] = {
                     "system_address": system_address,
                     "powerplay": {},
-                    "stations": {}
+                    "stations": {},
                 }
-            
+
             # Update system address
             data[system_name]["system_address"] = system_address
-            
+
             existing_cooldowns = {}
             if system_name in data and "powerplay" in data[system_name]:
                 existing_cooldowns = data[system_name]["powerplay"].get("cooldowns", {})
-            
+
             # Update powerplay data
             data[system_name]["powerplay"] = {
                 "power": power,
                 "status": status,
                 "progress": progress,
                 "cooldowns": existing_cooldowns,
+                "commodity_urls": commodity_urls,
             }
-            
+
             # Ensure stations dict exists
             if "stations" not in data[system_name]:
                 data[system_name]["stations"] = {}
 
-            logger.debug("About to save powerplay data for system %s: powerplay=%s", system_name, data[system_name].get("powerplay"))
+            logger.debug(
+                "About to save powerplay data for system %s: powerplay=%s",
+                system_name,
+                data[system_name].get("powerplay"),
+            )
 
             self._save(data)
 
             logger.info("Successfully saved powerplay entry for system %s", system_name)
-    
+
     def read_all_entries(self) -> Dict[str, Any]:
         """
         Read all market entries from the database.
-        
+
         Returns:
             Dictionary containing all systems with their stations, metals, and powerplay data
         """
         with self._lock:
             return self._load()
-    
+
     def check_cooldown(
         self,
         system_name: str,
@@ -221,9 +243,9 @@ class MarketDatabase:
     ) -> bool:
         """
         Check if a cooldown has expired for a specific recipient.
-        
+
         Cooldown is tracked per (station, metal, recipient_type, recipient_id) tuple.
-        
+
         Args:
             system_name: Name of the system
             station_name: Name of the station
@@ -231,13 +253,13 @@ class MarketDatabase:
             recipient_type: Type of recipient ("guild" or "user")
             recipient_id: Unique recipient ID
             cooldown_seconds: Cooldown duration in seconds
-            
+
         Returns:
             True if no cooldown exists or cooldown has expired, False otherwise
         """
         with self._lock:
             data = self._load()
-            
+
             # Check if path exists
             if system_name not in data:
                 return True
@@ -249,7 +271,7 @@ class MarketDatabase:
                 return True
             if metal not in data[system_name]["stations"][station_name]["metals"]:
                 return True
-            
+
             metal_data = data[system_name]["stations"][station_name]["metals"][metal]
             if "cooldowns" not in metal_data:
                 return True
@@ -257,12 +279,12 @@ class MarketDatabase:
                 return True
             if recipient_id not in metal_data["cooldowns"][recipient_type]:
                 return True
-            
+
             # Check if cooldown expired
             timestamp = metal_data["cooldowns"][recipient_type][recipient_id]
             elapsed = time.time() - timestamp
             return elapsed >= cooldown_seconds
-    
+
     def mark_sent(
         self,
         system_name: str,
@@ -273,7 +295,7 @@ class MarketDatabase:
     ) -> None:
         """
         Mark a message as sent by setting current timestamp for the cooldown key.
-        
+
         Args:
             system_name: Name of the system
             station_name: Name of the station
@@ -283,7 +305,7 @@ class MarketDatabase:
         """
         with self._lock:
             data = self._load()
-            
+
             # Ensure path exists (should already exist from write_market_entry)
             if system_name not in data:
                 return
@@ -295,20 +317,73 @@ class MarketDatabase:
                 return
             if metal not in data[system_name]["stations"][station_name]["metals"]:
                 return
-            
+
             metal_data = data[system_name]["stations"][station_name]["metals"][metal]
-            
+
             # Ensure cooldowns structure exists
             if "cooldowns" not in metal_data:
                 metal_data["cooldowns"] = {}
             if recipient_type not in metal_data["cooldowns"]:
                 metal_data["cooldowns"][recipient_type] = {}
-            
+
             # Set current timestamp
             metal_data["cooldowns"][recipient_type][recipient_id] = time.time()
-            
+
             self._save(data)
-    
+
+    def mark_sent_batch(self, cooldowns: List[Tuple[str, str, str, str, str]]) -> None:
+        """
+        Mark multiple messages as sent by setting current timestamps for cooldown keys.
+
+        This is a batch version of mark_sent() that reduces database writes by loading
+        once, applying all cooldowns, and saving once at the end. All operations are
+        performed atomically under a single lock.
+
+        Args:
+            cooldowns: List of tuples, each containing:
+                - system_name: Name of the system
+                - station_name: Name of the station
+                - metal: Metal commodity name
+                - recipient_type: Type of recipient ("guild" or "user")
+                - recipient_id: Unique recipient ID
+        """
+        if not cooldowns:
+            return
+
+        with self._lock:
+            data = self._load()
+
+            for (
+                system_name,
+                station_name,
+                metal,
+                recipient_type,
+                recipient_id,
+            ) in cooldowns:
+                if system_name not in data:
+                    continue
+                if "stations" not in data[system_name]:
+                    continue
+                if station_name not in data[system_name]["stations"]:
+                    continue
+                if "metals" not in data[system_name]["stations"][station_name]:
+                    continue
+                if metal not in data[system_name]["stations"][station_name]["metals"]:
+                    continue
+
+                metal_data = data[system_name]["stations"][station_name]["metals"][
+                    metal
+                ]
+
+                if "cooldowns" not in metal_data:
+                    metal_data["cooldowns"] = {}
+                if recipient_type not in metal_data["cooldowns"]:
+                    metal_data["cooldowns"][recipient_type] = {}
+
+                metal_data["cooldowns"][recipient_type][recipient_id] = time.time()
+
+            self._save(data)
+
     def check_powerplay_cooldown(
         self,
         system_name: str,
@@ -318,13 +393,13 @@ class MarketDatabase:
     ) -> bool:
         """
         Check if powerplay cooldown has expired for a recipient.
-        
+
         Args:
             system_name: Name of the system
             recipient_type: Type of recipient ("guild" or "user")
             recipient_id: Unique recipient ID
             cooldown_seconds: Cooldown duration in seconds
-            
+
         Returns:
             True if no cooldown exists or cooldown has expired, False otherwise
         """
@@ -344,7 +419,7 @@ class MarketDatabase:
             timestamp = powerplay["cooldowns"][recipient_type][recipient_id]
             elapsed = time.time() - timestamp
             return elapsed >= cooldown_seconds
-    
+
     def mark_powerplay_sent(
         self,
         system_name: str,
@@ -353,7 +428,7 @@ class MarketDatabase:
     ) -> None:
         """
         Mark powerplay alert as sent for cooldown tracking.
-        
+
         Args:
             system_name: Name of the system
             recipient_type: Type of recipient ("guild" or "user")
@@ -372,43 +447,80 @@ class MarketDatabase:
                 powerplay["cooldowns"][recipient_type] = {}
             powerplay["cooldowns"][recipient_type][recipient_id] = time.time()
             self._save(data)
-    
-    def prune_stale(self, current_systems: Set[str], cooldown_ttl_seconds: float = 0.05) -> None:
+
+    def mark_powerplay_sent_batch(self, cooldowns: List[Tuple[str, str, str]]) -> None:
+        """
+        Mark multiple powerplay alerts as sent for cooldown tracking in a single atomic operation.
+
+        Args:
+            cooldowns: List of tuples where each tuple contains:
+                      (system_name: str, recipient_type: str, recipient_id: str)
+        """
+        with self._lock:
+            data = self._load()
+
+            for system_name, recipient_type, recipient_id in cooldowns:
+                if system_name not in data:
+                    continue
+                if "powerplay" not in data[system_name]:
+                    continue
+                powerplay = data[system_name]["powerplay"]
+                if "cooldowns" not in powerplay:
+                    powerplay["cooldowns"] = {}
+                if recipient_type not in powerplay["cooldowns"]:
+                    powerplay["cooldowns"][recipient_type] = {}
+
+                powerplay["cooldowns"][recipient_type][recipient_id] = time.time()
+
+            self._save(data)
+
+    def prune_stale(
+        self, current_systems: Set[str], cooldown_ttl_seconds: float = 0.05
+    ) -> None:
         """
         Remove systems not in current_systems AND with all cooldowns expired.
-        
+
         A system is only pruned if:
         1. It's not in current_systems, AND
         2. All cooldowns for all metals in all stations have expired
-        
+
         Args:
             current_systems: Set of system names that are currently active
             cooldown_ttl_seconds: Time-to-live for cooldowns in seconds (default: 0.05 seconds).
                                  For production use, pass 48 * 3600 (48 hours).
         """
-        logger.info("prune_stale called: current_systems=%d, cooldown_ttl=%s seconds", len(current_systems), cooldown_ttl_seconds)
+        logger.info(
+            "prune_stale called: current_systems=%d, cooldown_ttl=%s seconds",
+            len(current_systems),
+            cooldown_ttl_seconds,
+        )
         with self._lock:
             data = self._load()
             systems_to_remove = []
-            
+
             for system_name in data.keys():
                 # Keep if in current systems
                 if system_name in current_systems:
                     logger.debug("Keeping system %s (in current_systems)", system_name)
                     continue
-                
+
                 # Check if any cooldowns are still active
                 has_active_cooldown = False
-                
+
                 if "stations" in data[system_name]:
                     for station_data in data[system_name]["stations"].values():
                         if "metals" in station_data:
                             for metal_data in station_data["metals"].values():
                                 if "cooldowns" in metal_data:
-                                    for recipient_type_data in metal_data["cooldowns"].values():
+                                    for recipient_type_data in metal_data[
+                                        "cooldowns"
+                                    ].values():
                                         for timestamp in recipient_type_data.values():
                                             # Check if cooldown is still active
-                                            if time.time() - timestamp < cooldown_ttl_seconds:
+                                            if (
+                                                time.time() - timestamp
+                                                < cooldown_ttl_seconds
+                                            ):
                                                 has_active_cooldown = True
                                                 break
                                         if has_active_cooldown:
@@ -417,41 +529,52 @@ class MarketDatabase:
                                     break
                         if has_active_cooldown:
                             break
-                
+
                 # Only prune if no active cooldowns
                 if not has_active_cooldown:
                     systems_to_remove.append(system_name)
-            
+
             # Remove stale systems
             for system_name in systems_to_remove:
-                logger.info("Removing system: %s (not in current_systems and no active cooldowns)", system_name)
+                logger.info(
+                    "Removing system: %s (not in current_systems and no active cooldowns)",
+                    system_name,
+                )
                 del data[system_name]
 
-            logger.info("prune_stale complete: kept %d, removed %d systems", len(data) - len(systems_to_remove), len(systems_to_remove))
+            logger.info(
+                "prune_stale complete: kept %d, removed %d systems",
+                len(data) - len(systems_to_remove),
+                len(systems_to_remove),
+            )
 
             self._save(data)
-    
+
     def begin_scan(self) -> None:
         """
         Mark the beginning of a scan operation.
-        
+
         This tracks that a scan is in progress to help with pruning logic.
         """
         with self._lock:
             self._scan_in_progress = True
-    
+
     def end_scan(self, scanned_systems: Set[str]) -> None:
         """
         Mark the end of a scan operation and prune stale systems.
-        
+
         Calls prune_stale with the set of systems that were scanned.
-        
+
         Args:
             scanned_systems: Set of system names that were seen in the scan
         """
-        logger.info("end_scan called: scanned_systems=%d, systems=%s", len(scanned_systems), list(scanned_systems)[:10])
+        logger.info(
+            "end_scan called: scanned_systems=%d, systems=%s",
+            len(scanned_systems),
+            list(scanned_systems)[:10],
+        )
         with self._lock:
             self._scan_in_progress = False
-        
+
         # Call prune_stale (which has its own lock)
         self.prune_stale(scanned_systems)
