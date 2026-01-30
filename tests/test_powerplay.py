@@ -39,8 +39,13 @@ def test_powerplay_fortified_builds_links(monkeypatch):
 
     # Mock database to capture write_powerplay_entry calls
     from unittest.mock import Mock
+
     mock_db = Mock()
-    monkeypatch.setattr(powerplay, "assemble_commodity_links", Mock(return_value="http://example.com/links"))
+    monkeypatch.setattr(
+        powerplay,
+        "assemble_commodity_links",
+        Mock(return_value="http://example.com/links"),
+    )
 
     systems = [["https://inara.cz/elite/starsystem/345798/", "Gold", "Palladium"]]
     powerplay.get_powerplay_status(systems, market_db=mock_db)
@@ -63,8 +68,13 @@ def test_powerplay_stronghold_uses_distance_30(monkeypatch):
 
     # Mock database and commodity links
     from unittest.mock import Mock
+
     mock_db = Mock()
-    monkeypatch.setattr(powerplay, "assemble_commodity_links", Mock(return_value="http://example.com/links"))
+    monkeypatch.setattr(
+        powerplay,
+        "assemble_commodity_links",
+        Mock(return_value="http://example.com/links"),
+    )
 
     systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
     powerplay.get_powerplay_status(systems, market_db=mock_db)
@@ -143,3 +153,94 @@ def test_get_powerplay_status_respects_database_cooldown(monkeypatch):
     mock_db.write_powerplay_entry.assert_called_once()
     call_args = mock_db.write_powerplay_entry.call_args
     assert call_args[1]["system_name"] == "Sol"
+
+
+def test_powerplay_fortified_generates_masked_links(monkeypatch):
+    """Test that powerplay generates masked commodity links for Fortified systems."""
+    # Mock http_get to return Fortified status
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
+    )
+
+    # Mock database and mask_commodity_links
+    from unittest.mock import Mock
+
+    mock_db = Mock()
+
+    # Mock mask_commodity_links to return known masked string
+    monkeypatch.setattr(
+        powerplay,
+        "mask_commodity_links",
+        Mock(return_value="[Sell gold here](https://inara.cz/test)"),
+    )
+    monkeypatch.setattr(
+        powerplay,
+        "assemble_commodity_links",
+        Mock(return_value="https://inara.cz/test"),
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    powerplay.get_powerplay_status(systems, market_db=mock_db)
+
+    # Verify powerplay entry was written with masked links
+    mock_db.write_powerplay_entry.assert_called_once()
+    call_args = mock_db.write_powerplay_entry.call_args
+    assert "commodity_urls" in call_args[1]
+    assert "[Sell gold here]" in call_args[1]["commodity_urls"]
+
+
+def test_powerplay_stronghold_generates_masked_links(monkeypatch):
+    """Test that powerplay generates masked commodity links for Stronghold systems."""
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Stronghold"))
+    )
+
+    from unittest.mock import Mock
+
+    mock_db = Mock()
+
+    # Mock mask_commodity_links to return known masked string
+    monkeypatch.setattr(
+        powerplay,
+        "mask_commodity_links",
+        Mock(return_value="[Sell Palladium here](https://inara.cz/test2)"),
+    )
+    monkeypatch.setattr(
+        powerplay,
+        "assemble_commodity_links",
+        Mock(return_value="https://inara.cz/test2"),
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/1496596/", "Palladium"]]
+    powerplay.get_powerplay_status(systems, market_db=mock_db)
+
+    # Verify powerplay entry was written with masked links
+    mock_db.write_powerplay_entry.assert_called_once()
+    call_args = mock_db.write_powerplay_entry.call_args
+    assert "commodity_urls" in call_args[1]
+    assert "[Sell Palladium here]" in call_args[1]["commodity_urls"]
+
+
+def test_powerplay_calls_mask_commodity_links(monkeypatch):
+    """Test that powerplay calls mask_commodity_links with URLs from assemble_commodity_links."""
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
+    )
+
+    from unittest.mock import Mock, call
+
+    mock_db = Mock()
+    mock_mask = Mock(return_value="[Sell gold here](https://inara.cz/test)")
+
+    monkeypatch.setattr(powerplay, "mask_commodity_links", mock_mask)
+    monkeypatch.setattr(
+        powerplay,
+        "assemble_commodity_links",
+        Mock(return_value="https://inara.cz/test"),
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    powerplay.get_powerplay_status(systems, market_db=mock_db)
+
+    # Verify mask_commodity_links was called
+    mock_mask.assert_called_once_with("https://inara.cz/test")

@@ -46,7 +46,7 @@ def test_dispatch_from_database_reads_entries():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -57,14 +57,12 @@ def test_dispatch_from_database_reads_entries():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}}
-                        }
+                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
                     }
-                }
+                },
             }
         }
-        
+
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_client.user = Mock()
@@ -75,14 +73,16 @@ def test_dispatch_from_database_reads_entries():
         mock_channel = Mock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.permissions_for = Mock(
+            return_value=Mock(view_channel=True, send_messages=True)
+        )
         mock_channel.position = 0
         mock_channel.id = 999
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services
         mock_guild_prefs = Mock()
         mock_guild_prefs.get_preferences.return_value = {}
@@ -93,7 +93,7 @@ def test_dispatch_from_database_reads_entries():
         mock_opt_outs.is_opted_out.return_value = False
         mock_subscribers = Mock()
         mock_subscribers.all.return_value = []
-        
+
         # Mock check_cooldown to return True (not on cooldown)
         mock_db.check_cooldown.return_value = True
 
@@ -104,12 +104,12 @@ def test_dispatch_from_database_reads_entries():
             mock_opt_outs,
             mock_subscribers,
         )
-        
+
         await messenger.dispatch_from_database(mock_db)
-        
+
         # Verify read_all_entries was called
         mock_db.read_all_entries.assert_called_once()
-    
+
     asyncio.run(_run())
 
 
@@ -120,7 +120,7 @@ def test_dispatch_from_database_checks_cooldowns():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database with TWO metals - one passes cooldown, one doesn't
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -133,17 +133,19 @@ def test_dispatch_from_database_checks_cooldowns():
                         "url": "https://inara.cz/station/1234/",
                         "metals": {
                             "Gold": {"stock": 25000, "cooldowns": {}},
-                            "Palladium": {"stock": 18000, "cooldowns": {}}
-                        }
+                            "Palladium": {"stock": 18000, "cooldowns": {}},
+                        },
                     }
-                }
+                },
             }
         }
+
         # Gold passes cooldown, Palladium doesn't
         def check_cooldown_side_effect(**kwargs):
             return kwargs["metal"] == "Gold"
+
         mock_db.check_cooldown.side_effect = check_cooldown_side_effect
-        
+
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_client.user = Mock()
@@ -154,14 +156,16 @@ def test_dispatch_from_database_checks_cooldowns():
         mock_channel = Mock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.permissions_for = Mock(
+            return_value=Mock(view_channel=True, send_messages=True)
+        )
         mock_channel.position = 0
         mock_channel.id = 999
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
@@ -193,7 +197,7 @@ def test_dispatch_from_database_checks_cooldowns():
         metals_checked = {call[1]["metal"] for call in calls}
         assert "Gold" in metals_checked
         assert "Palladium" in metals_checked
-    
+
     asyncio.run(_run())
 
 
@@ -204,7 +208,7 @@ def test_dispatch_from_database_marks_sent():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -215,15 +219,13 @@ def test_dispatch_from_database_marks_sent():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}}
-                        }
+                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
                     }
-                }
+                },
             }
         }
         mock_db.check_cooldown.return_value = True
-        
+
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_guild = Mock()
@@ -233,12 +235,14 @@ def test_dispatch_from_database_marks_sent():
         mock_channel = AsyncMock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
@@ -274,7 +278,7 @@ def test_dispatch_from_database_marks_sent():
             assert call_args[1]["metal"] == "Gold"
             assert "recipient_type" in call_args[1]
             assert "recipient_id" in call_args[1]
-    
+
     asyncio.run(_run())
 
 
@@ -285,7 +289,7 @@ def test_dispatch_from_database_applies_preferences():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database with Gold (should be filtered out by Palladium-only preference)
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -296,15 +300,13 @@ def test_dispatch_from_database_applies_preferences():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}}
-                        }
+                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
                     }
-                }
+                },
             }
         }
         mock_db.check_cooldown.return_value = True
-        
+
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_client.user = Mock()
@@ -315,14 +317,16 @@ def test_dispatch_from_database_applies_preferences():
         mock_channel = Mock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.permissions_for = Mock(
+            return_value=Mock(view_channel=True, send_messages=True)
+        )
         mock_channel.position = 0
         mock_channel.id = 999
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services with Palladium-only preference
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
@@ -345,11 +349,11 @@ def test_dispatch_from_database_applies_preferences():
         )
 
         await messenger.dispatch_from_database(mock_db)
-        
+
         # Verify that Gold was filtered out (Palladium-only preference)
         # Since Gold doesn't match the Palladium preference, no message should be sent
         mock_channel.send.assert_not_called()
-    
+
     asyncio.run(_run())
 
 
@@ -360,7 +364,7 @@ def test_dispatch_from_database_includes_role_mentions():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -371,15 +375,13 @@ def test_dispatch_from_database_includes_role_mentions():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}}
-                        }
+                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
                     }
-                }
+                },
             }
         }
         mock_db.check_cooldown.return_value = True
-        
+
         # Create mock client with guild and role
         mock_client = _DummyClient(loop)
         mock_guild = Mock()
@@ -389,19 +391,21 @@ def test_dispatch_from_database_includes_role_mentions():
         mock_channel = AsyncMock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
-        
+
         # Add role
         mock_role = Mock()
         mock_role.name = "Market Alert"
         mock_role.mention = "<@&123456789>"
         mock_guild.roles = [mock_role]
         mock_guild.get_role.return_value = None
-        
+
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services with pings enabled
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
@@ -427,13 +431,15 @@ def test_dispatch_from_database_includes_role_mentions():
             await messenger.dispatch_from_database(mock_db)
         except (AttributeError, TypeError):
             pass
-        
+
         # Verify channel.send was called with role mention integrated in message
         if mock_channel.send.called:
             call_args = mock_channel.send.call_args
             message_content = call_args[0][0]
-            assert "<@&123456789>" in message_content or "Market Alert" in message_content
-    
+            assert (
+                "<@&123456789>" in message_content or "Market Alert" in message_content
+            )
+
     asyncio.run(_run())
 
 
@@ -444,7 +450,7 @@ def test_dispatch_from_database_handles_powerplay():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database with powerplay entry
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -453,13 +459,13 @@ def test_dispatch_from_database_handles_powerplay():
                 "powerplay": {
                     "power": "Zachary Hudson",
                     "status": "Fortified",
-                    "progress": 75
+                    "progress": 75,
                 },
-                "stations": {}
+                "stations": {},
             }
         }
         mock_db.check_cooldown.return_value = True
-        
+
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_client.user = Mock()
@@ -470,21 +476,25 @@ def test_dispatch_from_database_handles_powerplay():
         mock_channel = Mock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for = Mock(return_value=Mock(view_channel=True, send_messages=True))
+        mock_channel.permissions_for = Mock(
+            return_value=Mock(view_channel=True, send_messages=True)
+        )
         mock_channel.position = 0
         mock_channel.id = 999
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services with powerplay preference
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
         mock_guild_prefs.effective_channel_id.return_value = None
         mock_guild_prefs.effective_role_name.return_value = "Market Alert"
         mock_guild_prefs.effective_role_id.return_value = None
-        mock_guild_prefs.get_preferences.return_value = {"powerplay": ["Zachary Hudson"]}
+        mock_guild_prefs.get_preferences.return_value = {
+            "powerplay": ["Zachary Hudson"]
+        }
         mock_guild_prefs.pings_enabled.return_value = False
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
@@ -500,7 +510,7 @@ def test_dispatch_from_database_handles_powerplay():
         )
 
         await messenger.dispatch_from_database(mock_db)
-        
+
         # Verify powerplay message was sent (Zachary Hudson preference matches)
         mock_channel.send.assert_called_once()
         sent_message = mock_channel.send.call_args[0][0]
@@ -517,7 +527,7 @@ def test_dispatch_per_recipient_filtering():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database with both Gold and Palladium
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -530,17 +540,17 @@ def test_dispatch_per_recipient_filtering():
                         "url": "https://inara.cz/station/1234/",
                         "metals": {
                             "Gold": {"stock": 25000, "cooldowns": {}},
-                            "Palladium": {"stock": 18000, "cooldowns": {}}
-                        }
+                            "Palladium": {"stock": 18000, "cooldowns": {}},
+                        },
                     }
-                }
+                },
             }
         }
         mock_db.check_cooldown.return_value = True
-        
+
         # Create two guilds with different preferences
         mock_client = _DummyClient(loop)
-        
+
         # Guild 1: Gold only
         mock_guild1 = Mock()
         mock_guild1.id = 111111
@@ -549,11 +559,13 @@ def test_dispatch_per_recipient_filtering():
         mock_channel1 = AsyncMock()
         mock_channel1.name = "market-watch"
         mock_channel1.send = AsyncMock()
-        mock_channel1.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel1.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
         mock_guild1.text_channels = [mock_channel1]
         mock_guild1.get_channel.return_value = None
         mock_guild1.roles = []
-        
+
         # Guild 2: Palladium only
         mock_guild2 = Mock()
         mock_guild2.id = 222222
@@ -562,28 +574,32 @@ def test_dispatch_per_recipient_filtering():
         mock_channel2 = AsyncMock()
         mock_channel2.name = "market-watch"
         mock_channel2.send = AsyncMock()
-        mock_channel2.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel2.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
         mock_guild2.text_channels = [mock_channel2]
         mock_guild2.get_channel.return_value = None
         mock_guild2.roles = []
-        
+
         mock_client.guilds = [mock_guild1, mock_guild2]
-        
+
         # Create mock services with per-guild preferences
         mock_guild_prefs = Mock()
+
         def get_prefs_side_effect(guild_id):
             if guild_id == 111111:
                 return {"commodity": ["Gold"]}
             elif guild_id == 222222:
                 return {"commodity": ["Palladium"]}
             return {}
+
         mock_guild_prefs.get_preferences.side_effect = get_prefs_side_effect
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
         mock_guild_prefs.effective_channel_id.return_value = None
         mock_guild_prefs.effective_role_name.return_value = "Market Alert"
         mock_guild_prefs.effective_role_id.return_value = None
         mock_guild_prefs.pings_enabled.return_value = False
-        
+
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
         mock_subscribers = Mock()
@@ -610,7 +626,7 @@ def test_dispatch_per_recipient_filtering():
             assert "Palladium" not in msg1
             assert "Palladium" in msg2
             assert "Gold" not in msg2
-    
+
     asyncio.run(_run())
 
 
@@ -621,7 +637,7 @@ def test_dispatch_partial_metal_cooldown():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database with Gold and Palladium
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -634,18 +650,19 @@ def test_dispatch_partial_metal_cooldown():
                         "url": "https://inara.cz/station/1234/",
                         "metals": {
                             "Gold": {"stock": 25000, "cooldowns": {}},
-                            "Palladium": {"stock": 18000, "cooldowns": {}}
-                        }
+                            "Palladium": {"stock": 18000, "cooldowns": {}},
+                        },
                     }
-                }
+                },
             }
         }
-        
+
         # Gold passes cooldown, Palladium doesn't
         def check_cooldown_side_effect(**kwargs):
             return kwargs["metal"] == "Gold"
+
         mock_db.check_cooldown.side_effect = check_cooldown_side_effect
-        
+
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_guild = Mock()
@@ -655,12 +672,14 @@ def test_dispatch_partial_metal_cooldown():
         mock_channel = AsyncMock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
@@ -692,7 +711,7 @@ def test_dispatch_partial_metal_cooldown():
             message_content = mock_channel.send.call_args[0][0]
             assert "Gold" in message_content
             assert "Palladium" not in message_content
-    
+
     asyncio.run(_run())
 
 
@@ -703,7 +722,7 @@ def test_dispatch_empty_filtered_result():
 
     async def _run():
         loop = asyncio.get_running_loop()
-        
+
         # Create mock database with Gold
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
@@ -714,15 +733,13 @@ def test_dispatch_empty_filtered_result():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}}
-                        }
+                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
                     }
-                }
+                },
             }
         }
         mock_db.check_cooldown.return_value = True
-        
+
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_guild = Mock()
@@ -732,12 +749,14 @@ def test_dispatch_empty_filtered_result():
         mock_channel = AsyncMock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
-        mock_channel.permissions_for.return_value = Mock(view_channel=True, send_messages=True)
+        mock_channel.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
         mock_guild.text_channels = [mock_channel]
         mock_guild.get_channel.return_value = None
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
-        
+
         # Create mock services with Palladium-only preference (filters out Gold)
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
@@ -766,7 +785,7 @@ def test_dispatch_empty_filtered_result():
 
         # Verify no message was sent (all entries filtered out)
         assert not mock_channel.send.called
-    
+
     asyncio.run(_run())
 
 
@@ -804,10 +823,12 @@ def test_filter_entries_by_station_type():
         station_type_lower = station_type.lower()
         for pref in station_type_prefs:
             pref_lower = pref.lower()
-            if (station_type_lower == pref_lower or
-                station_type_lower.startswith(f"{pref_lower} ") or
-                station_type_lower.startswith(f"{pref_lower}(") or
-                f" {pref_lower} " in f" {station_type_lower} "):
+            if (
+                station_type_lower == pref_lower
+                or station_type_lower.startswith(f"{pref_lower} ")
+                or station_type_lower.startswith(f"{pref_lower}(")
+                or f" {pref_lower} " in f" {station_type_lower} "
+            ):
                 filtered.append(entry)
                 break
 
@@ -878,7 +899,10 @@ def test_filter_entries_by_powerplay():
     for entry in entries:
         power = entry.get("power", "")
         power_lower = power.lower()
-        if any(power_lower in p.lower() or p.lower() in power_lower for p in powerplay_prefs):
+        if any(
+            power_lower in p.lower() or p.lower() in power_lower
+            for p in powerplay_prefs
+        ):
             filtered.append(entry)
 
     # Should only include Zachary Hudson entry
@@ -967,10 +991,12 @@ def test_filter_entries_non_matching_filtered_out():
         passes_station_type = False
         for pref in station_type_prefs:
             pref_lower = pref.lower()
-            if (station_type_lower == pref_lower or
-                station_type_lower.startswith(f"{pref_lower} ") or
-                station_type_lower.startswith(f"{pref_lower}(") or
-                f" {pref_lower} " in f" {station_type_lower} "):
+            if (
+                station_type_lower == pref_lower
+                or station_type_lower.startswith(f"{pref_lower} ")
+                or station_type_lower.startswith(f"{pref_lower}(")
+                or f" {pref_lower} " in f" {station_type_lower} "
+            ):
                 passes_station_type = True
                 break
 
@@ -1034,10 +1060,12 @@ def test_filter_entries_mixed_some_pass_some_filtered():
             passes_station_type = False
             for pref in station_type_prefs:
                 pref_lower = pref.lower()
-                if (station_type_lower == pref_lower or
-                    station_type_lower.startswith(f"{pref_lower} ") or
-                    station_type_lower.startswith(f"{pref_lower}(") or
-                    f" {pref_lower} " in f" {station_type_lower} "):
+                if (
+                    station_type_lower == pref_lower
+                    or station_type_lower.startswith(f"{pref_lower} ")
+                    or station_type_lower.startswith(f"{pref_lower}(")
+                    or f" {pref_lower} " in f" {station_type_lower} "
+                ):
                     passes_station_type = True
                     break
 
@@ -1056,7 +1084,10 @@ def test_filter_entries_mixed_some_pass_some_filtered():
         elif "power" in entry:
             power = entry.get("power", "")
             power_lower = power.lower()
-            if any(power_lower in p.lower() or p.lower() in power_lower for p in powerplay_prefs):
+            if any(
+                power_lower in p.lower() or p.lower() in power_lower
+                for p in powerplay_prefs
+            ):
                 filtered.append(entry)
 
     assert len(filtered) == 2
@@ -1089,10 +1120,12 @@ def test_filter_entries_case_insensitive():
         passes_station_type = False
         for pref in station_type_prefs:
             pref_lower = pref.lower()
-            if (station_type_lower == pref_lower or
-                station_type_lower.startswith(f"{pref_lower} ") or
-                station_type_lower.startswith(f"{pref_lower}(") or
-                f" {pref_lower} " in f" {station_type_lower} "):
+            if (
+                station_type_lower == pref_lower
+                or station_type_lower.startswith(f"{pref_lower} ")
+                or station_type_lower.startswith(f"{pref_lower}(")
+                or f" {pref_lower} " in f" {station_type_lower} "
+            ):
                 passes_station_type = True
                 break
 
@@ -1144,10 +1177,12 @@ def test_filter_entries_all_filters_must_pass():
         passes_station_type = False
         for pref in station_type_prefs:
             pref_lower = pref.lower()
-            if (station_type_lower == pref_lower or
-                station_type_lower.startswith(f"{pref_lower} ") or
-                station_type_lower.startswith(f"{pref_lower}(") or
-                f" {pref_lower} " in f" {station_type_lower} "):
+            if (
+                station_type_lower == pref_lower
+                or station_type_lower.startswith(f"{pref_lower} ")
+                or station_type_lower.startswith(f"{pref_lower}(")
+                or f" {pref_lower} " in f" {station_type_lower} "
+            ):
                 passes_station_type = True
                 break
 
@@ -1167,3 +1202,119 @@ def test_filter_entries_all_filters_must_pass():
     assert len(filtered) == 1
     assert filtered[0]["station_name"] == "Abraham Lincoln"
     assert "Gold" in [m[0] for m in filtered[0]["metals"]]
+
+
+def test_powerplay_message_with_commodity_urls_fortified():
+    """Test that powerplay message includes commodity URLs for Fortified systems."""
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        mock_client,
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    powerplay_lines = [
+        {"system_name": "TestSystem", "power": "Zachary Hudson", "status": "Fortified"}
+    ]
+
+    all_data = {
+        "TestSystem": {
+            "powerplay": {
+                "power": "Zachary Hudson",
+                "status": "Fortified",
+                "progress": "75%",
+                "commodity_urls": "[Sell gold here](https://inara.cz/test)",
+            }
+        }
+    }
+
+    message = messenger._build_message([], powerplay_lines, all_data)
+
+    # Verify message content
+    assert "You can earn merits" in message
+    assert "[Sell gold here]" in message
+    assert "acquisition systems" in message
+
+
+def test_powerplay_message_with_commodity_urls_stronghold():
+    """Test that powerplay message includes commodity URLs for Stronghold systems."""
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        mock_client,
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    powerplay_lines = [
+        {"system_name": "TestSystem", "power": "Edmund Mahon", "status": "Stronghold"}
+    ]
+
+    all_data = {
+        "TestSystem": {
+            "powerplay": {
+                "power": "Edmund Mahon",
+                "status": "Stronghold",
+                "progress": "80%",
+                "commodity_urls": "[Sell Palladium here](https://inara.cz/test2)",
+            }
+        }
+    }
+
+    message = messenger._build_message([], powerplay_lines, all_data)
+
+    # Verify message content
+    assert "You can earn merits" in message
+    assert "[Sell Palladium here]" in message
+    assert (
+        "acquisition systems" not in message
+    )  # Stronghold should not include "acquisition systems"
+
+
+def test_powerplay_message_without_commodity_urls():
+    """Test that powerplay message works without commodity_urls field (backward compatibility)."""
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        mock_client,
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    powerplay_lines = [
+        {"system_name": "TestSystem", "power": "Zachary Hudson", "status": "Fortified"}
+    ]
+
+    all_data = {
+        "TestSystem": {
+            "powerplay": {
+                "power": "Zachary Hudson",
+                "status": "Fortified",
+                "progress": "75%",
+                # No commodity_urls field
+            }
+        }
+    }
+
+    message = messenger._build_message([], powerplay_lines, all_data)
+
+    # Verify message content - should not have merit text
+    assert "You can earn merits" not in message
+    assert "[Sell" not in message
+    assert "TestSystem" in message  # But should still have basic info
