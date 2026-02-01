@@ -114,9 +114,6 @@ Once you get a message, just go to the station in your hauling ship (and your ca
 
 ## FAQ
 
-**Q: How often does the bot scan for markets?**
-A: Every 30 minutes. This is not configurable by users (it's a server-side setting).
-
 **Q: Why do some alert fields show "unknown"?**
 A: Some stations don't have complete market data on Inara, often due to colonization. These stations are still worth visiting.
 
