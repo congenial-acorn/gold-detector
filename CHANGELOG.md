@@ -1,3 +1,34 @@
+## [1.6.1] - 2026-01-29
+
+### Added
+- **Commodity URLs in powerplay alerts**: Powerplay messages now include masked Inara commodity links for Gold and Palladium, allowing easy access to station market pages.
+- **Masked commodity links generation**: When a monitored system is Fortified or Stronghold, the bot now generates and stores masked commodity links to bypass Inara's link blocking.
+- **Diagnostic logging for powerplay operations**: Added detailed logging to powerplay write operations for easier troubleshooting of database issues.
+
+### Fixed
+- **Critical: Fixed database being empty after every scan** - Monitor was overwriting the entire database on each scan instead of preserving existing powerplay entries. Now properly merges new data with existing state.
+- **Critical: Fixed powerplay cooldown tracking** - Cooldowns were not persisting across updates, causing duplicate powerplay alerts. Added `check_powerplay_cooldown()` and `mark_powerplay_sent()` methods to MarketDatabase to properly track and preserve cooldowns.
+- **Critical: Fixed powerplay systems being pruned immediately** - Powerplay systems were written to database but then removed because they weren't in `scanned_systems` (which only contains systems from station page scans). Now merges powerplay systems with scanned_systems before pruning.
+- **Fixed Future handling in message dispatch** - `loop_done_from_thread` now properly awaits `Future.result()` with timeout, preventing potential blocking issues.
+- **Strip unicode variation selectors from system names** - System names now have unicode variation selectors (U+FE00-U+FE0F) stripped to prevent duplicate entries with slight name variations.
+
+### Changed
+- **Comprehensive test coverage expansion**:
+  - Added tests for commodity links functionality in powerplay alerts
+  - Added batch testing for powerplay operations
+  - Added helper tests for database operations
+  - Total of 539 lines of new tests added
+- **Improved test organization** - Removed orphaned test code and refactored test assertions for better maintainability.
+- **Enhanced logging throughout message dispatch flow** - Added INFO and DEBUG level logs for filtering diagnostics and dispatch troubleshooting.
+
+### Technical Details
+- Powerplay entries now include `commodity_urls` field with masked links for Gold and Palladium
+- Database write operations preserve cooldown state across updates
+- Powerplay systems are tracked independently and merged with scanned systems to prevent data loss
+- All database operations maintain atomic write guarantees
+
+---
+
 ## [1.6.0] - 2026-01-28
 
 ### Added
