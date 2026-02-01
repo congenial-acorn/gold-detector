@@ -23,7 +23,7 @@
 4. *(Optional)* Set a custom role: `/set_alert_role @your-role`
 5. Run `/diagnose` to verify the bot has the right permissions
 
-> **Required bot permissions:** View Channels, Send Messages, Embed Links
+> **Required bot permissions:** View Channels, Send Messages
 
 ## How It Works
 
