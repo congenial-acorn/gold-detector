@@ -172,9 +172,9 @@ class DiscordMessenger:
 
                         if commodity_urls:
                             if status == "Fortified":
-                                powerplay_info += f"\nYou can earn merits by selling for large profit in these acquisition systems: {commodity_urls}"
+                                powerplay_info += f"\nYou can earn merits by trading for a large profit in these acquisition systems: {commodity_urls}"
                             elif status == "Stronghold":
-                                powerplay_info += f"\nYou can earn merits by selling for large profit: {commodity_urls}"
+                                powerplay_info += f"\nYou can earn merits by trading for a large profit in these acquisition systems: {commodity_urls}"
 
                         lines.append(powerplay_info)
 
