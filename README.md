@@ -133,10 +133,10 @@ A: User preferences filter your personal DM alerts and your view of server alert
 - If you invited the bot before January 1, 2026, the original invite link had incorrect permissions. Go to **Server Settings → Integrations → Gold Detector** and manually grant **View Channels**
 
 **Bot isn't posting alerts in my server**
+- The bot posts to `#market-watch` by default — make sure this channel exists, or set a custom one with `/set_alert_channel`
 - Run `/diagnose` in your alert channel to check permissions
 - Verify the bot has: **View Channels**, **Send Messages**, and **Embed Links** in the alert channel
 - Check that server alerts are enabled: `/show_alert_settings`
-- The bot posts to `#market-watch` by default — make sure this channel exists, or set a custom one with `/set_alert_channel`
 
 **I'm not receiving DM alerts**
 - Confirm you've run `/alerts_on`
