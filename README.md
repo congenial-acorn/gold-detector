@@ -162,3 +162,7 @@ Contributions are welcome! Feel free to open a pull request or submit an issue. 
 The source code is now under the MIT license since v1.5.0 (previously under CC0).
 
 Neither the bot nor the developer is associated with Frontier Developments, Elite Dangerous, Inara.cz, or any other member or tool of the Elite Dangerous community.
+
+- [Terms of Service](./TERMS_OF_SERVICE.md)
+- [Privacy Policy](./PRIVACY_POLICY.md)
+
