@@ -1,8 +1,14 @@
-# Gold Detector Discord Bot
+<div align="center">
 
-**An Elite: Dangerous trading tool** — Finds hidden, high-stock Gold and Palladium markets before anyone else.
+# 🔍 Gold Detector Discord Bot
 
-[Invite the bot to your server or add to your apps](https://discord.com/oauth2/authorize?client_id=1415805825364267151)
+**Find hidden high-stock Gold & Palladium markets before anyone else**
+
+<img src="assets/demo.png" alt="Gold Detector in action — real-time market alerts in Discord" width="720" />
+
+[![Invite Bot](https://img.shields.io/badge/Discord-Invite%20Bot-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/oauth2/authorize?client_id=1415805825364267151)
+
+</div>
 
 > **Note:** If you invited the bot before January 1, 2026, you need to manually grant it **View Channels** permission. See [Troubleshooting](#troubleshooting) for details.
 
