@@ -292,13 +292,6 @@ class DiscordMessenger:
             len(self.subscribers.all()),
         )
 
-        if not market_db:
-            self.logger.warning("[dispatch_from_database] No market_db provided")
-            return
-
-        # Read all entries from database
-        all_data = market_db.read_all_entries()
-
         # Process guilds
         for guild in self.client.guilds:
             if self.opt_outs.is_opted_out(guild.id):
