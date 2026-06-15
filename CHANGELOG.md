@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Added
+- **Silver monitoring**: The bot now monitors Silver (Inara commodity ID 46) alongside Gold and Palladium. Silver has an average sell price of 37,567 CR, well above the existing price threshold of 28,000 CR, so the same hidden-market detection logic applies.
+- Users can now filter alerts for Silver using `/set_preferences commodity Silver`.
+
 ## [1.6.1] - 2026-01-29
 
 ### Added

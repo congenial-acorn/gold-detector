@@ -2,7 +2,7 @@
 
 # 🔍 Gold Detector Discord Bot
 
-**Find hidden high-stock Gold & Palladium markets before anyone else**
+**Find hidden high-stock Gold, Palladium & Silver markets before anyone else**
 
 <img src="assets/demo.png" alt="Gold Detector in action — real-time market alerts in Discord" width="720" />
 
@@ -46,7 +46,7 @@ Note: You may read about other effects of BGS on markets [here](https://cdb.sotl
 ## Features
 
 - **Hidden Market Detection** — Finds stations in infrastructure failure with outdated market data (price >28,000 CR, stock >15,000 tons)
-- **Gold & Palladium** — Monitors both commodities
+- **Gold, Palladium & Silver** — Monitors all three commodities
 - **PowerPlay Integration** — Alerts for Fortified and Stronghold systems with merit-earning opportunities
 - **DM & Server Alerts** — Get alerts via direct message, server channel, or both
 - **Customizable Filters** — Filter by station type, commodity, or PowerPlay faction
@@ -60,7 +60,7 @@ Want to filter your alerts? Use `/set_preferences` to choose station types, comm
 | Category | Options | Example |
 |----------|---------|---------|
 | Station Type | Starport, Outpost, Surface Port | `/set_preferences station_type Starport, Outpost` |
-| Commodity | Gold, Palladium | `/set_preferences commodity Gold` |
+| Commodity | Gold, Palladium, Silver | `/set_preferences commodity Gold` |
 | PowerPlay | *(Any faction leader)* | `/set_preferences powerplay Zachary Hudson` |
 
 > Preferences can be set per-user or per-server. Add `target: server` to set server-wide defaults (requires Manage Server permission). Without `target`, preferences apply to your personal alerts.
@@ -102,7 +102,7 @@ Filter which alerts you receive. Add `target: server` for server-wide defaults (
 | Command | Description |
 |---------|-------------|
 | `/set_preferences station_type` | Filter by station type (Starport, Outpost, Surface Port) |
-| `/set_preferences commodity` | Filter by commodity (Gold, Palladium) |
+| `/set_preferences commodity` | Filter by commodity (Gold, Palladium, Silver) |
 | `/set_preferences powerplay` | Filter by PowerPlay faction |
 | `/set_preferences show` | Display your current preferences |
 | `/set_preferences remove` | Remove specific options from a category |
@@ -114,7 +114,7 @@ Filter which alerts you receive. Add `target: server` for server-wide defaults (
 
 After setting up the bot, simply wait for pings. Successful gold detections will occur sometimes a few times a week, sometimes once a month. Alerts have a **cooldown of 48 hours**. Sometimes, some fields of the message will be "unknown". These stations are still worth visiting because sometimes Inara does not get full market data due to colonization.
 
-Once you get a message, just go to the station in your hauling ship (and your carrier if you have one) and then start buying the gold. You can use Inara commodity search to find good gold sell prices nearby. Or you can load your carrier to the top and then find good sell prices later. You can make hundreds of millions of credits by doing this, and this is definitely the best trading you can find outside of much rarer special conditions.
+Once you get a message, just go to the station in your hauling ship (and your carrier if you have one) and then start buying the commodity. You can use Inara commodity search to find good sell prices nearby. Or you can load your carrier to the top and then find good sell prices later. You can make hundreds of millions of credits by doing this, and this is definitely the best trading you can find outside of much rarer special conditions.
 
 **Note:** when you get to the station, you will see the stock is 10% of what the bot reports. The stock will actually refill over time until all of the stock it originally had is gone so do not worry.
 
@@ -126,8 +126,8 @@ A: Some stations don't have complete market data on Inara, often due to coloniza
 **Q: I set up the bot but I'm not getting alerts. What's wrong?**
 A: Hidden market opportunities aren't always available. Alerts can come a few times a week or once a month depending on BGS state. Make sure you've run `/alerts_on` (for DMs) or that your server is configured with `/set_alert_channel`. Run `/diagnose` to check permissions.
 
-**Q: Can I get alerts for both Gold and Palladium?**
-A: Yes, you receive both by default. Use `/set_preferences commodity` to filter to one if you prefer.
+**Q: Can I get alerts for Gold, Palladium, and Silver?**
+A: Yes, you receive all three by default. Use `/set_preferences commodity` to filter if you prefer.
 
 **Q: What's the difference between user and server preferences?**
 A: User preferences filter your personal DM alerts and your view of server alerts. Server preferences (set with `target: server`) apply as a default filter for everyone in that server.
