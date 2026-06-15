@@ -53,7 +53,7 @@ def test_silver_fields():
     assert silver.name == "Silver"
     assert silver.inara_id == 46
     assert silver.price_threshold == 28_000
-    assert silver.stock_threshold == 15_000
+    assert silver.stock_threshold == 50_000
     assert silver.mask_text == "Sell Silver here"
 
 

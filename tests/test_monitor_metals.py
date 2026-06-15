@@ -114,7 +114,7 @@ HTML_SILVER_TEMPLATE = """
         <td>col2</td>
         <td><a href="#">Silver</a></td>
         <td data-order="35000">35,000</td>
-        <td data-order="18000">18,000</td>
+        <td data-order="52000">52,000</td>
       </tr>
     </table>
   </body>
@@ -126,8 +126,9 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
     """
     Test that monitor_metals detects Silver markets with the same logic as Gold.
 
-    Verifies that Silver is treated identically to Gold/Palladium:
-    price > 28,000 and stock > 15,000 triggers a market entry write.
+    Verifies that Silver is treated identically to Gold/Palladium in logic,
+    differing only by its higher stock threshold:
+    price > 28,000 and stock > 50,000 triggers a market entry write.
     """
     from unittest.mock import Mock
     from gold_detector.market_database import MarketDatabase
@@ -168,7 +169,7 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
         station_type="Starport",
         url="https://inara.cz/elite/station-market/789/",
         metal="Silver",
-        stock=18000,
+        stock=52000,
     )
     mock_db.end_scan.assert_called_once()
     call_args = mock_db.end_scan.call_args
