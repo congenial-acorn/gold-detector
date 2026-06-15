@@ -7,6 +7,7 @@ logger = logging.getLogger("gold.alert_helpers")
 
 GOLD_NUM = 42
 PALLADIUM_NUM = 45
+SILVER_NUM = 46
 
 
 def _has_commodity_results(url, fetch):
@@ -54,6 +55,8 @@ def mask_commodity_links(urls):
             text = "Sell gold here"
         elif "pa1%5B%5D=45" in url:
             text = "Sell Palladium here"
+        elif "pa1%5B%5D=46" in url:
+            text = "Sell Silver here"
         else:
             text = "Sell here"
         masked.append(f"[{text}](<{url}>)")
