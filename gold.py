@@ -3,19 +3,10 @@ import os
 import sys
 from pathlib import Path
 
-from gold_detector.alert_helpers import (
-    GOLD_NUM,
-    PALLADIUM_NUM,
-    SILVER_NUM,
-    assemble_commodity_links,
-    mask_commodity_links,
-)
-from gold_detector.emitter import emit_loop_done, set_loop_done_emitter
-from gold_detector.http_client import http_get
-from gold_detector.inara_client import get_station_market_urls, get_station_type
+from gold_detector.commodities import commodity_names
+from gold_detector.emitter import set_loop_done_emitter  # noqa: F401
 from gold_detector.market_database import MarketDatabase
 from gold_detector.monitor import monitor_metals
-from gold_detector.powerplay import get_powerplay_status
 
 logger = logging.getLogger("gold")
 
@@ -36,7 +27,9 @@ def nearest_station_urls():
 def main():
     db_path = Path("market_database.json")
     market_db = MarketDatabase(db_path)
-    monitor_metals(nearest_station_urls(), metals=["Gold", "Palladium", "Silver"], market_db=market_db)
+    monitor_metals(
+        nearest_station_urls(), metals=commodity_names(), market_db=market_db
+    )
 
 
 if __name__ == "__main__":

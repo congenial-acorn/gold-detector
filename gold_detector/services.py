@@ -5,11 +5,12 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Sequence, Set, Tuple
 
+from .commodities import commodity_preference_options
 from .config import PROJECT_ROOT, sanitize_channel_name, sanitize_role_name
 
 PREFERENCE_OPTIONS: Dict[str, Tuple[str, ...]] = {
     "station_type": ("Starport", "Outpost", "Surface Port"),
-    "commodity": ("Gold", "Palladium", "Silver"),
+    "commodity": commodity_preference_options(),
     "powerplay": (
         "Aisling Duval",
         "Archon Delaine",
@@ -66,7 +67,9 @@ class GuildPreferencesService:
 
     def _load(
         self,
-    ) -> Tuple[Dict[int, Dict[str, object]], Dict[int, Dict[str, Dict[str, List[str]]]]]:
+    ) -> Tuple[
+        Dict[int, Dict[str, object]], Dict[int, Dict[str, Dict[str, List[str]]]]
+    ]:
         raw = self.store.load({})
 
         if isinstance(raw, dict) and ("guilds" in raw or "users" in raw):
@@ -108,9 +111,7 @@ class GuildPreferencesService:
         return normalized
 
     @staticmethod
-    def _normalize_preference_list(
-        raw_values, allowed: Sequence[str]
-    ) -> List[str]:
+    def _normalize_preference_list(raw_values, allowed: Sequence[str]) -> List[str]:
         if raw_values is None:
             return []
         if isinstance(raw_values, str):
@@ -145,9 +146,7 @@ class GuildPreferencesService:
             prefs = vals.get("preferences") or {}
             if prefs:
                 entry["preferences"] = {
-                    key: sorted(map(str, vals))
-                    for key, vals in prefs.items()
-                    if vals
+                    key: sorted(map(str, vals)) for key, vals in prefs.items() if vals
                 }
             guild_serial[str(gid)] = entry
 
