@@ -45,7 +45,7 @@ Note: You may read about other effects of BGS on markets [here](https://cdb.sotl
 
 ## Features
 
-- **Hidden Market Detection** — Finds stations in infrastructure failure with outdated market data (price >28,000 CR, stock >15,000 tons)
+- **Hidden Market Detection** — Finds stations in infrastructure failure with outdated market data (price >28,000 CR). Gold and Palladium need over 15,000 tons in stock to trigger an alert; Silver needs over 50,000 tons.
 - **Gold, Palladium & Silver** — Monitors all three commodities
 - **PowerPlay Integration** — Alerts for Fortified and Stronghold systems with merit-earning opportunities
 - **DM & Server Alerts** — Get alerts via direct message, server channel, or both
@@ -80,7 +80,7 @@ These commands work in any server with the bot, or in DMs. No special permission
 
 ### Server Commands
 
-These commands require **Manage Server** permission.
+**Configuration commands** — require **Manage Server** permission:
 
 | Command | Description |
 |---------|-------------|
@@ -92,8 +92,15 @@ These commands require **Manage Server** permission.
 | `/server_alerts_off` | Disable server alerts |
 | `/server_ping_on` | Enable `@role` pings with alerts |
 | `/server_ping_off` | Disable `@role` pings (alerts still sent) |
+
+**Info commands** — work in any server, no special permission needed:
+
+| Command | Description |
+|---------|-------------|
 | `/show_alert_settings` | Display current server configuration |
 | `/diagnose` | Check bot permissions in the current channel |
+
+> Both info commands are server-only (they don't work in DMs) but any member can run them.
 
 ### Preference Commands
 
