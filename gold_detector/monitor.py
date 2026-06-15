@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
+from gold_detector.commodities import get_commodity
 from gold_detector.emitter import emit_loop_done
 from gold_detector.http_client import http_get
 from gold_detector.inara_client import get_station_market_urls, get_station_type
@@ -16,8 +17,6 @@ from gold_detector.powerplay import get_powerplay_status
 logger = logging.getLogger("gold.monitor")
 
 MONITOR_INTERVAL_SECONDS = float(os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(1800)))
-PRICE_THRESHOLD = 28_000
-STOCK_THRESHOLD = 15_000
 
 
 def _parse_header(soup: BeautifulSoup, url: str):
@@ -57,7 +56,9 @@ def _update_systems(
         metals.append(metal)
 
 
-def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[MarketDatabase] = None):
+def monitor_metals(
+    near_urls, metals, cooldown_hours=0, market_db: Optional[MarketDatabase] = None
+):
     logger.info(
         "Starting monitor loop: checking %s metals with %sh cooldown",
         len(metals),
@@ -120,10 +121,16 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
                             stock,
                         )
 
-                        if buy_price > PRICE_THRESHOLD and stock > STOCK_THRESHOLD:
+                        commodity = get_commodity(metal)
+                        if (
+                            buy_price > commodity.price_threshold
+                            and stock > commodity.stock_threshold
+                        ):
                             match = re.search(r"/(\d+)/$", url)
                             if not match:
-                                logger.warning("Could not extract station ID from URL: %s", url)
+                                logger.warning(
+                                    "Could not extract station ID from URL: %s", url
+                                )
                                 continue
                             station_id = match.group(1)
                             st_type = get_station_type(station_id)
@@ -169,10 +176,15 @@ def monitor_metals(near_urls, metals, cooldown_hours=0, market_db: Optional[Mark
 
             system_list = [[url] + found for url, found in systems.items()]
             if market_db:
-                powerplay_systems = get_powerplay_status(system_list, market_db=market_db)
+                powerplay_systems = get_powerplay_status(
+                    system_list, market_db=market_db
+                )
                 scanned_systems.update(powerplay_systems)
-                logger.info("Merged powerplay systems: added %d powerplay systems to scanned set (total: %d)",
-                          len(powerplay_systems), len(scanned_systems))
+                logger.info(
+                    "Merged powerplay systems: added %d powerplay systems to scanned set (total: %d)",
+                    len(powerplay_systems),
+                    len(scanned_systems),
+                )
             else:
                 get_powerplay_status(system_list)
 

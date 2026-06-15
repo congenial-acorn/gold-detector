@@ -174,3 +174,146 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
     call_args = mock_db.end_scan.call_args
     assert isinstance(call_args[0][0], set)
     assert "Silver System" in call_args[0][0]
+
+
+# ---------------------------------------------------------------------------
+# Per-commodity threshold tests
+# ---------------------------------------------------------------------------
+
+HTML_CUSTOM_THRESHOLD = """
+<html>
+  <body>
+    <h2>
+      <a href="/elite/station/555/">Custom Station</a>
+      <a href="/elite/system/666/">Custom System</a>
+    </h2>
+    <table>
+      <tr>
+        <td>col1</td>
+        <td>col2</td>
+        <td><a href="#">Gold</a></td>
+        <td data-order="25000">25,000</td>
+        <td data-order="12000">12,000</td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+def test_monitor_uses_per_commodity_thresholds_lower(monkeypatch):
+    """Monitor should write entry when price/stock exceed a custom *lower* threshold
+    even though they fall below the default 28k/15k."""
+    from unittest.mock import Mock
+
+    from gold_detector.commodities import Commodity
+    from gold_detector.market_database import MarketDatabase
+
+    mock_db = Mock(spec=MarketDatabase)
+
+    custom_gold = Commodity(
+        name="Gold",
+        inara_id=42,
+        price_threshold=20_000,
+        stock_threshold=10_000,
+        mask_text="Sell gold here",
+    )
+    monkeypatch.setattr(monitor, "get_commodity", lambda name: custom_gold)
+
+    class FakeResponse:
+        text = HTML_CUSTOM_THRESHOLD
+
+    monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
+    monkeypatch.setattr(
+        monitor,
+        "get_station_market_urls",
+        lambda near_urls: ["https://inara.cz/elite/station-market/555/"],
+    )
+    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
+    monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
+
+    def fake_sleep(seconds):
+        raise StopMonitoring
+
+    monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
+
+    with pytest.raises(StopMonitoring):
+        monitor.monitor_metals(
+            ["dummy"],
+            ["Gold"],
+            cooldown_hours=1,
+            market_db=mock_db,
+        )
+
+    mock_db.write_market_entry.assert_called_once()
+    call = mock_db.write_market_entry.call_args
+    assert call[1]["metal"] == "Gold"
+    assert call[1]["stock"] == 12000
+
+
+HTML_HIGH_THRESHOLD = """
+<html>
+  <body>
+    <h2>
+      <a href="/elite/station/555/">High Station</a>
+      <a href="/elite/system/666/">High System</a>
+    </h2>
+    <table>
+      <tr>
+        <td>col1</td>
+        <td>col2</td>
+        <td><a href="#">Gold</a></td>
+        <td data-order="29000">29,000</td>
+        <td data-order="20000">20,000</td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
+    """Monitor should NOT write entry when price/stock fall below a custom *higher* threshold
+    even though they exceed the default 28k/15k."""
+    from unittest.mock import Mock
+
+    from gold_detector.commodities import Commodity
+    from gold_detector.market_database import MarketDatabase
+
+    mock_db = Mock(spec=MarketDatabase)
+
+    custom_gold = Commodity(
+        name="Gold",
+        inara_id=42,
+        price_threshold=50_000,
+        stock_threshold=30_000,
+        mask_text="Sell gold here",
+    )
+    monkeypatch.setattr(monitor, "get_commodity", lambda name: custom_gold)
+
+    class FakeResponse:
+        text = HTML_HIGH_THRESHOLD
+
+    monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
+    monkeypatch.setattr(
+        monitor,
+        "get_station_market_urls",
+        lambda near_urls: ["https://inara.cz/elite/station-market/555/"],
+    )
+    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
+    monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
+
+    def fake_sleep(seconds):
+        raise StopMonitoring
+
+    monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
+
+    with pytest.raises(StopMonitoring):
+        monitor.monitor_metals(
+            ["dummy"],
+            ["Gold"],
+            cooldown_hours=1,
+            market_db=mock_db,
+        )
+
+    mock_db.write_market_entry.assert_not_called()
