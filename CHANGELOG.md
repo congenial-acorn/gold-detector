@@ -1,4 +1,4 @@
-## [Unreleased]
+## [v1.7.0] - 2026-06-15
 
 ### Added
 - **Silver monitoring**: The bot now monitors Silver alongside Gold and Palladium. Filter Silver alerts with `/set_preferences commodity Silver`.
