@@ -1318,3 +1318,48 @@ def test_powerplay_message_without_commodity_urls():
     assert "You can earn merits" not in message
     assert "[Sell" not in message
     assert "TestSystem" in message  # But should still have basic info
+
+
+def test_build_message_formats_stock_with_commas():
+    """Stock values in alert messages should be formatted with comma separators."""
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        mock_client,
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metal": "Gold",
+            "stock": 25000,
+        },
+        {
+            "system_name": "Sol",
+            "system_address": "1234",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/1234/",
+            "metal": "Palladium",
+            "stock": 18000,
+        },
+    ]
+
+    message = messenger._build_message(entries, [], {})
+
+    assert "Gold stock: 25,000" in message
+    assert "Palladium stock: 18,000" in message
+    # Ensure raw unformatted numbers are NOT present
+    assert "stock: 25000" not in message
+    assert "stock: 18000" not in message

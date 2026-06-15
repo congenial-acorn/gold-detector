@@ -148,7 +148,7 @@ class DiscordMessenger:
 
                 for station_name, station_data in system_data["stations"].items():
                     metals_str = "; ".join(
-                        f"{metal} stock: {stock}"
+                        f"{metal} stock: {stock:,}"
                         for metal, stock in station_data["metals"]
                     )
                     lines.append(
