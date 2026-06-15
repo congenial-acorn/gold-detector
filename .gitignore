@@ -12,6 +12,7 @@ guild_prefs.json
 
 # Sisyphus AI agent session data
 .sisyphus/
+.omo
 
 # Log files
 *log.txt
