@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from .alert_helpers import (
     GOLD_NUM,
     PALLADIUM_NUM,
+    SILVER_NUM,
     assemble_commodity_links,
     mask_commodity_links,
 )
@@ -59,6 +60,8 @@ def _build_commodity_ids(system: List[str]) -> List[int]:
             ids.append(GOLD_NUM)
         elif item == "Palladium":
             ids.append(PALLADIUM_NUM)
+        elif item == "Silver":
+            ids.append(SILVER_NUM)
     return ids
 
 

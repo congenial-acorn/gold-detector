@@ -244,3 +244,22 @@ def test_powerplay_calls_mask_commodity_links(monkeypatch):
 
     # Verify mask_commodity_links was called
     mock_mask.assert_called_once_with("https://inara.cz/test")
+
+
+def test_build_commodity_ids_includes_silver():
+    """_build_commodity_ids should include SILVER_NUM (46) when 'Silver' is in the list."""
+    from gold_detector.powerplay import _build_commodity_ids
+
+    result = _build_commodity_ids(["Gold", "Silver", "Palladium"])
+    assert 42 in result   # Gold
+    assert 46 in result   # Silver
+    assert 45 in result   # Palladium
+    assert len(result) == 3
+
+
+def test_build_commodity_ids_silver_only():
+    """_build_commodity_ids should return [46] for ['Silver'] alone."""
+    from gold_detector.powerplay import _build_commodity_ids
+
+    result = _build_commodity_ids(["Silver"])
+    assert result == [46]
