@@ -2,7 +2,7 @@
 
 # 🔍 Gold Detector Discord Bot
 
-**Find hidden high-stock Gold, Palladium & Silver markets before anyone else**
+**Find hidden markets selling Gold, Palladium & Silver at 90% off — before anyone else knows they exist**
 
 <img src="assets/demo.png" alt="Gold Detector in action — real-time market alerts in Discord" width="720" />
 
@@ -33,19 +33,20 @@
 
 ## How It Works
 
-Trading is one of the best ways to make money in Elite: Dangerous, and the best way to trade is to buy low and sell high. Easy, right? Many factors affect market prices, but the **Background Simulation (BGS)** is among the most important.
+**Infrastructure failure slashes Gold, Palladium, and Silver prices by 90%.** That's the single biggest discount you'll find in Elite: Dangerous trading — buy at a fraction of normal price, then sell elsewhere for 60k+ credits per ton of profit.
 
-The **infrastructure failure** BGS state causes the market price of gold to plunge by 90%, letting you trade gold for around 63k/ton profit. But if you go to **Inara** and look for these stations in infrastructure failure, you will see that all the stations are out of stock. Because Inara will list them as the top trade route by profit, they will get swarmed like locusts to a crop and suck up all the stock.
+But there's a catch. Once a station's discounted price shows up on **Inara**, it gets swarmed like locusts on a crop. Every trader in the bubble piles in, the stock evaporates, and the deal is gone within hours.
 
-But some stations are hidden from Inara. The bubble is so large that not all stations are updated in real time. This bot will detect the stations that are in infrastructure failure, but without an updated market. So they will have ample stocks of gold for you to profit.
+**Here's the edge:** the bubble is so large that Inara doesn't update every station in real time. This bot detects the stations that *are* in infrastructure failure but whose market data Inara *hasn't caught up on yet*. Their price is still 90% off, their stock is untouched, and nobody else knows about them. That's where the real money is.
 
 In addition, you can use this cheap gold to earn merits by selling it in an acquisition system. The bot will alert you when such opportunities are available. You can choose which PowerPlay factions to receive alerts from using commands. See [Preferences](#preferences) and [Commands](#commands).
 
-Note: You may read about other effects of BGS on markets [here](https://cdb.sotl.org.uk/effects)
+> Note: You may read about other effects of BGS on markets [here](https://cdb.sotl.org.uk/effects)
 
 ## Features
 
-- **Hidden Market Detection** — Finds stations in infrastructure failure with outdated market data (price >28,000 CR). Gold and Palladium need over 15,000 tons in stock to trigger an alert; Silver needs over 50,000 tons.
+- **🔥 90% Off Markets** — When a station hits infrastructure failure, its prices plummet 90%. The bot finds the stations Inara *hasn't* updated yet — so the deal is still live and fully stocked.
+- **Hidden Market Detection** — Catches stations in infrastructure failure whose market data hasn't synced to Inara (price >28,000 CR). Gold and Palladium need over 15,000 tons in stock to trigger an alert; Silver needs over 50,000 tons.
 - **Gold, Palladium & Silver** — Monitors all three commodities
 - **PowerPlay Integration** — Alerts for Fortified and Stronghold systems with merit-earning opportunities
 - **DM & Server Alerts** — Get alerts via direct message, server channel, or both
