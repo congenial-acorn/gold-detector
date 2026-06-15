@@ -1,13 +1,10 @@
 import logging
 from urllib.parse import quote_plus
 
+from .commodities import id_to_mask_text_map
 from .http_client import http_get
 
 logger = logging.getLogger("gold.alert_helpers")
-
-GOLD_NUM = 42
-PALLADIUM_NUM = 45
-SILVER_NUM = 46
 
 
 def _has_commodity_results(url, fetch):
@@ -49,15 +46,13 @@ def mask_commodity_links(urls):
         return ""
     if isinstance(urls, str):
         urls = [urls]
+    id_to_text = id_to_mask_text_map()
     masked = []
     for url in urls:
-        if "pa1%5B%5D=42" in url:
-            text = "Sell gold here"
-        elif "pa1%5B%5D=45" in url:
-            text = "Sell Palladium here"
-        elif "pa1%5B%5D=46" in url:
-            text = "Sell Silver here"
-        else:
-            text = "Sell here"
+        text = "Sell here"
+        for cid, mask_text in id_to_text.items():
+            if f"pa1%5B%5D={cid}" in url:
+                text = mask_text
+                break
         masked.append(f"[{text}](<{url}>)")
     return " ".join(masked)

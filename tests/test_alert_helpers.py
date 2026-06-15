@@ -8,16 +8,14 @@ Gold (42) and Palladium (45).
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-def test_silver_num_constant():
-    """SILVER_NUM should exist and equal 46 (Inara commodity ID for Silver)."""
-    from gold_detector.alert_helpers import SILVER_NUM
+def test_silver_inara_id():
+    """Silver commodity should have Inara ID 46."""
+    from gold_detector.commodities import get_commodity
 
-    assert SILVER_NUM == 46
+    assert get_commodity("Silver").inara_id == 46
 
 
 def test_mask_commodity_links_gold():

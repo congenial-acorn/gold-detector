@@ -1,8 +1,6 @@
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import gold_detector.powerplay as powerplay  # noqa: E402
@@ -227,7 +225,7 @@ def test_powerplay_calls_mask_commodity_links(monkeypatch):
         powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
     )
 
-    from unittest.mock import Mock, call
+    from unittest.mock import Mock
 
     mock_db = Mock()
     mock_mask = Mock(return_value="[Sell gold here](https://inara.cz/test)")
@@ -247,7 +245,7 @@ def test_powerplay_calls_mask_commodity_links(monkeypatch):
 
 
 def test_build_commodity_ids_includes_silver():
-    """_build_commodity_ids should include SILVER_NUM (46) when 'Silver' is in the list."""
+    """_build_commodity_ids should include Silver (Inara ID 46) when 'Silver' is in the list."""
     from gold_detector.powerplay import _build_commodity_ids
 
     result = _build_commodity_ids(["Gold", "Silver", "Palladium"])

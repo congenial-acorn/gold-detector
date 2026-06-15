@@ -4,13 +4,8 @@ from typing import Any, List, Optional, Set
 
 from bs4 import BeautifulSoup
 
-from .alert_helpers import (
-    GOLD_NUM,
-    PALLADIUM_NUM,
-    SILVER_NUM,
-    assemble_commodity_links,
-    mask_commodity_links,
-)
+from .alert_helpers import assemble_commodity_links, mask_commodity_links
+from .commodities import name_to_id_map
 from .http_client import http_get
 from .market_database import MarketDatabase
 
@@ -54,15 +49,8 @@ def _parse_powerplay_fields(block) -> dict[str, Any]:
 
 
 def _build_commodity_ids(system: List[str]) -> List[int]:
-    ids: List[int] = []
-    for item in system:
-        if item == "Gold":
-            ids.append(GOLD_NUM)
-        elif item == "Palladium":
-            ids.append(PALLADIUM_NUM)
-        elif item == "Silver":
-            ids.append(SILVER_NUM)
-    return ids
+    _name_to_id = name_to_id_map()
+    return [_name_to_id[item] for item in system if item in _name_to_id]
 
 
 def get_powerplay_status(
