@@ -9,7 +9,7 @@ from .config import PROJECT_ROOT, sanitize_channel_name, sanitize_role_name
 
 PREFERENCE_OPTIONS: Dict[str, Tuple[str, ...]] = {
     "station_type": ("Starport", "Outpost", "Surface Port"),
-    "commodity": ("Gold", "Palladium"),
+    "commodity": ("Gold", "Palladium", "Silver"),
     "powerplay": (
         "Aisling Duval",
         "Archon Delaine",

@@ -99,3 +99,78 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     call_args = mock_db.end_scan.call_args
     assert isinstance(call_args[0][0], set)
     assert "Example System" in call_args[0][0]
+
+
+HTML_SILVER_TEMPLATE = """
+<html>
+  <body>
+    <h2>
+      <a href="/elite/station/789/">Silver Station</a>
+      <a href="/elite/system/1011/">Silver System</a>
+    </h2>
+    <table>
+      <tr>
+        <td>col1</td>
+        <td>col2</td>
+        <td><a href="#">Silver</a></td>
+        <td data-order="35000">35,000</td>
+        <td data-order="18000">18,000</td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
+
+def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
+    """
+    Test that monitor_metals detects Silver markets with the same logic as Gold.
+
+    Verifies that Silver is treated identically to Gold/Palladium:
+    price > 28,000 and stock > 15,000 triggers a market entry write.
+    """
+    from unittest.mock import Mock
+    from gold_detector.market_database import MarketDatabase
+
+    mock_db = Mock(spec=MarketDatabase)
+
+    class FakeResponse:
+        text = HTML_SILVER_TEMPLATE
+
+    monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
+    monkeypatch.setattr(
+        monitor,
+        "get_station_market_urls",
+        lambda near_urls: ["https://inara.cz/elite/station-market/789/"],
+    )
+    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Starport")
+    monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
+
+    def fake_sleep(seconds):
+        raise StopMonitoring
+
+    monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
+
+    with pytest.raises(StopMonitoring):
+        monitor.monitor_metals(
+            ["dummy"],
+            ["Silver"],
+            cooldown_hours=1,
+            market_db=mock_db,
+        )
+
+    # Verify database methods were called
+    mock_db.begin_scan.assert_called_once()
+    mock_db.write_market_entry.assert_called_once_with(
+        system_name="Silver System",
+        system_address="https://inara.cz/elite/system/1011/",
+        station_name="Silver Station",
+        station_type="Starport",
+        url="https://inara.cz/elite/station-market/789/",
+        metal="Silver",
+        stock=18000,
+    )
+    mock_db.end_scan.assert_called_once()
+    call_args = mock_db.end_scan.call_args
+    assert isinstance(call_args[0][0], set)
+    assert "Silver System" in call_args[0][0]

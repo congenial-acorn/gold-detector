@@ -6,6 +6,7 @@ from pathlib import Path
 from gold_detector.alert_helpers import (
     GOLD_NUM,
     PALLADIUM_NUM,
+    SILVER_NUM,
     assemble_commodity_links,
     mask_commodity_links,
 )
@@ -35,7 +36,7 @@ def nearest_station_urls():
 def main():
     db_path = Path("market_database.json")
     market_db = MarketDatabase(db_path)
-    monitor_metals(nearest_station_urls(), metals=["Gold", "Palladium"], market_db=market_db)
+    monitor_metals(nearest_station_urls(), metals=["Gold", "Palladium", "Silver"], market_db=market_db)
 
 
 if __name__ == "__main__":
