@@ -1,10 +1,9 @@
 ## [Unreleased]
 
 ### Added
-- **Silver monitoring**: The bot now monitors Silver (Inara commodity ID 46) alongside Gold and Palladium. Silver has an average sell price of 37,567 CR, well above the price threshold, so the same hidden-market detection logic applies. Filter Silver alerts with `/set_preferences commodity Silver`.
+- **Silver monitoring**: The bot now monitors Silver alongside Gold and Palladium. Filter Silver alerts with `/set_preferences commodity Silver`.
 
 ### Changed
-- **Central commodity configuration**: All commodity settings — name, Inara ID, thresholds, and link text — now live in a single place. Adding a new commodity to monitor is a one-line change.
 - **Per-commodity stock thresholds**: Each commodity now has its own stock threshold. Gold and Palladium require over 15,000 tons in stock to trigger an alert; Silver requires over 50,000 tons, reducing noise from low-stock Silver stations that aren't worth the trip.
 - **Comma-formatted stock counts**: Stock levels in alerts now display with thousands separators (e.g. "50,000" instead of "50000") for easier reading.
 
