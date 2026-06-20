@@ -1,3 +1,8 @@
+## [1.7.1] - 2026-06-20
+
+### Changed
+- **Masked links**: Messages now use masked links for system and station Inara pages to reduce walls of text.
+
 ## [1.7.0] - 2026-06-15
 
 ### Added
