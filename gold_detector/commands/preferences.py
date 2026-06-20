@@ -111,9 +111,7 @@ class PreferencesGroup(app_commands.Group):
             if not prefix or lower.startswith(prefix_lower):
                 matches.append(opt)
 
-        return [
-            app_commands.Choice(name=opt, value=opt) for opt in matches[:25]
-        ]
+        return [app_commands.Choice(name=opt, value=opt) for opt in matches[:25]]
 
     def _resolve_scope(
         self,
@@ -183,7 +181,9 @@ class PreferencesGroup(app_commands.Group):
     ):
         return self._autocomplete("commodity", current)
 
-    @app_commands.command(name="powerplay", description="Set preferred Powerplay leaders.")
+    @app_commands.command(
+        name="powerplay", description="Set preferred Powerplay leaders."
+    )
     @app_commands.describe(
         values="Comma-separated list of Powerplay leaders",
         target="Apply to your user (default) or this server",
@@ -326,8 +326,8 @@ class PreferencesGroup(app_commands.Group):
         for cat in targets:
             self._prefs.set_preferences(scope, scope_id, cat, [])
 
-        label = "all preferences" if cat_value == "__all__" else cat_value.replace(
-            "_", " "
+        label = (
+            "all preferences" if cat_value == "__all__" else cat_value.replace("_", " ")
         )
         await interaction.response.send_message(
             f"Cleared {label} for {scope_label}.", ephemeral=True

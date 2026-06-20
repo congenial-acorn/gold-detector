@@ -25,7 +25,9 @@ def test_save_call_counter_multiple_saves():
 
     with count_save_calls(db):
         db.write_market_entry("System", "1", "Station", "Coriolis", "url", "Gold", 100)
-        db.write_market_entry("System", "1", "Station", "Coriolis", "url", "Palladium", 50)
+        db.write_market_entry(
+            "System", "1", "Station", "Coriolis", "url", "Palladium", 50
+        )
         db.mark_sent("System", "Station", "Gold", "guild", "123")
         db.mark_sent("System", "Station", "Palladium", "guild", "123")
         assert db.save_count == 4

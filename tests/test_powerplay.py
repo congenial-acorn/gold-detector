@@ -249,9 +249,9 @@ def test_build_commodity_ids_includes_silver():
     from gold_detector.powerplay import _build_commodity_ids
 
     result = _build_commodity_ids(["Gold", "Silver", "Palladium"])
-    assert 42 in result   # Gold
-    assert 46 in result   # Silver
-    assert 45 in result   # Palladium
+    assert 42 in result  # Gold
+    assert 46 in result  # Silver
+    assert 45 in result  # Palladium
     assert len(result) == 3
 
 

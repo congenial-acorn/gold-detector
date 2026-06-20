@@ -1,6 +1,5 @@
 import asyncio
 
-import pytest
 
 # Ensure the repository root is on the import path for the tests.
 import sys
@@ -115,7 +114,7 @@ def test_dispatch_from_database_reads_entries():
 
 def test_dispatch_from_database_checks_cooldowns():
     """Test that dispatch_from_database checks cooldowns BEFORE building message (per-entry)."""
-    from unittest.mock import Mock, AsyncMock, patch
+    from unittest.mock import Mock, AsyncMock
     from gold_detector.market_database import MarketDatabase
 
     async def _run():
@@ -284,7 +283,7 @@ def test_dispatch_from_database_marks_sent():
 
 def test_dispatch_from_database_applies_preferences():
     """Test that dispatch_from_database applies filter_entries_for_preferences at data level."""
-    from unittest.mock import Mock, AsyncMock, patch
+    from unittest.mock import Mock, AsyncMock
     from gold_detector.market_database import MarketDatabase
 
     async def _run():
@@ -445,7 +444,7 @@ def test_dispatch_from_database_includes_role_mentions():
 
 def test_dispatch_from_database_handles_powerplay():
     """Test that dispatch_from_database filters powerplay entries using filter_entries_for_preferences."""
-    from unittest.mock import Mock, AsyncMock, patch
+    from unittest.mock import Mock, AsyncMock
     from gold_detector.market_database import MarketDatabase
 
     async def _run():

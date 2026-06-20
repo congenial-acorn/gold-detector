@@ -1,8 +1,8 @@
-# Secrets / env files
+# ─── Secrets / environment ───────────────────────────────────────
 .env
-!.env.example        # keep a template in the repo
+!.env.example
 
-# Application storage files
+# ─── Application runtime data ────────────────────────────────────
 market_database.json
 dm_subscribers.json
 guild_optout.json
@@ -10,31 +10,41 @@ server_cooldowns.json
 user_cooldowns.json
 guild_prefs.json
 
-# Sisyphus AI agent session data
-.sisyphus/
-.omo
-
-# Log files
+# ─── Logs ────────────────────────────────────────────────────────
 *log.txt
 
-# Byte-compiled / optimized / DLL files
+# ─── Python: bytecode, build artifacts ───────────────────────────
 __pycache__/
-*.py[codz]
+*.py[cod]
 *$py.class
 
-# Unit test / coverage reports
+# ─── Testing & coverage ──────────────────────────────────────────
 .pytest_cache/
 .coverage
 .coverage.*
 
-# Type checking
+# ─── Type checkers & linters (caches) ────────────────────────────
 .mypy_cache/
 .dmypy.json
 dmypy.json
 .ruff_cache/
 
-# Virtual environments
-.venv
+# ─── Virtual environments ────────────────────────────────────────
+.venv/
 venv/
+env/
 
+# ─── Editor / IDE ────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ─── Operating system cruft ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── AI agent tooling (local only) ───────────────────────────────
+.sisyphus/
+.omo/
+.codegraph/
 AGENTS.md

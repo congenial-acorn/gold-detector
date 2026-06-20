@@ -63,7 +63,9 @@ class Commodity:
 COMMODITIES: Tuple[Commodity, ...] = (
     Commodity(name="Gold", inara_id=42, mask_text="Sell gold here"),
     Commodity(name="Palladium", inara_id=45, mask_text="Sell Palladium here"),
-    Commodity(name="Silver", inara_id=46, stock_threshold=50000, mask_text="Sell Silver here"),
+    Commodity(
+        name="Silver", inara_id=46, stock_threshold=50000, mask_text="Sell Silver here"
+    ),
 )
 
 # Pre-built lookup tables (module-level so they are built once at import).

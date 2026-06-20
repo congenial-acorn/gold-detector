@@ -23,8 +23,7 @@ def test_mask_commodity_links_gold():
     from gold_detector.alert_helpers import mask_commodity_links
 
     url = (
-        "https://inara.cz/elite/commodities/?formbrief=1&pi1=2"
-        "&pa1%5B%5D=42&ps1=Sol"
+        "https://inara.cz/elite/commodities/?formbrief=1&pi1=2" "&pa1%5B%5D=42&ps1=Sol"
     )
     result = mask_commodity_links([url])
     assert "[Sell gold here]" in result
@@ -36,8 +35,7 @@ def test_mask_commodity_links_palladium():
     from gold_detector.alert_helpers import mask_commodity_links
 
     url = (
-        "https://inara.cz/elite/commodities/?formbrief=1&pi1=2"
-        "&pa1%5B%5D=45&ps1=Sol"
+        "https://inara.cz/elite/commodities/?formbrief=1&pi1=2" "&pa1%5B%5D=45&ps1=Sol"
     )
     result = mask_commodity_links([url])
     assert "[Sell Palladium here]" in result
@@ -49,8 +47,7 @@ def test_mask_commodity_links_silver():
     from gold_detector.alert_helpers import mask_commodity_links
 
     url = (
-        "https://inara.cz/elite/commodities/?formbrief=1&pi1=2"
-        "&pa1%5B%5D=46&ps1=Sol"
+        "https://inara.cz/elite/commodities/?formbrief=1&pi1=2" "&pa1%5B%5D=46&ps1=Sol"
     )
     result = mask_commodity_links([url])
     assert "[Sell Silver here]" in result

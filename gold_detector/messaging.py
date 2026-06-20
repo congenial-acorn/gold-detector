@@ -423,11 +423,11 @@ class DiscordMessenger:
             try:
                 await channel.send(
                     message,
-                    allowed_mentions=AllowedMentions(
-                        roles=True, users=False, everyone=False
-                    )
-                    if self.guild_prefs.pings_enabled(guild.id)
-                    else AllowedMentions.none(),
+                    allowed_mentions=(
+                        AllowedMentions(roles=True, users=False, everyone=False)
+                        if self.guild_prefs.pings_enabled(guild.id)
+                        else AllowedMentions.none()
+                    ),
                 )
 
                 # Mark cooldowns AFTER sending message

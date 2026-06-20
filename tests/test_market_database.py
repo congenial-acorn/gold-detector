@@ -117,7 +117,9 @@ def test_write_market_entry_updates_metal_stock(db, db_path):
     with open(db_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 30000
+    assert (
+        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 30000
+    )
 
 
 def test_write_market_entry_persists_atomically(db, db_path):
@@ -169,7 +171,10 @@ def test_write_market_entry_preserves_cooldowns(db, db_path):
 
     # Cooldown should still exist
     assert "cooldowns" in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]
-    assert "guild" in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["cooldowns"]
+    assert (
+        "guild"
+        in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["cooldowns"]
+    )
 
 
 # ============================================================================
@@ -222,7 +227,9 @@ def test_write_powerplay_entry_preserves_station_data(db, db_path):
 
     # Station data should still exist
     assert "Abraham Lincoln" in data["Sol"]["stations"]
-    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+    assert (
+        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+    )
 
 
 def test_write_powerplay_entry_updates_existing_powerplay(db, db_path):
@@ -325,7 +332,10 @@ def test_read_all_entries_returns_all_systems(db):
     assert len(entries) == 2
     assert "Sol" in entries
     assert "Alpha Centauri" in entries
-    assert entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+    assert (
+        entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"]
+        == 25000
+    )
 
 
 def test_read_all_entries_returns_empty_dict_if_no_data(db):
@@ -360,7 +370,9 @@ def test_read_all_entries_includes_powerplay_and_cooldowns(db):
 
     assert "powerplay" in entries["Sol"]
     assert entries["Sol"]["powerplay"]["power"] == "Zachary Hudson"
-    assert "cooldowns" in entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]
+    assert (
+        "cooldowns" in entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]
+    )
 
 
 # ============================================================================
@@ -565,7 +577,9 @@ def test_mark_sent_sets_cooldown_timestamp(db, db_path):
     with open(db_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    cooldown_ts = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["cooldowns"]["guild"]["123456"]
+    cooldown_ts = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"][
+        "cooldowns"
+    ]["guild"]["123456"]
     assert before <= cooldown_ts <= after
 
 
@@ -617,7 +631,9 @@ def test_mark_sent_overwrites_existing_cooldown(db, db_path):
         data = json.load(f)
 
     # Should only have one cooldown entry
-    cooldowns = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["cooldowns"]["guild"]
+    cooldowns = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"][
+        "cooldowns"
+    ]["guild"]
     assert len(cooldowns) == 1
     assert "123456" in cooldowns
 
@@ -851,7 +867,9 @@ def test_concurrent_writes_dont_corrupt_file(db, db_path):
     threads = [
         threading.Thread(target=write_entry, args=("Sol", "Station1", "Gold")),
         threading.Thread(target=write_entry, args=("Sol", "Station2", "Palladium")),
-        threading.Thread(target=write_entry, args=("Alpha Centauri", "Station3", "Gold")),
+        threading.Thread(
+            target=write_entry, args=("Alpha Centauri", "Station3", "Gold")
+        ),
     ]
 
     for t in threads:
@@ -909,7 +927,10 @@ def test_concurrent_reads_see_consistent_data(db):
     # All reads should return consistent data
     for entries in results:
         assert "Sol" in entries
-        assert entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+        assert (
+            entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"]
+            == 25000
+        )
 
 
 def test_concurrent_write_market_entry_calls(db, db_path):
@@ -1024,4 +1045,6 @@ def test_temp_file_pattern_works_correctly(db, db_path):
     with open(db_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+    assert (
+        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+    )
