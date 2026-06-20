@@ -141,10 +141,11 @@ class DiscordMessenger:
             messages = []
             for system_name, system_data in systems.items():
                 system_address = system_data["system_address"]
-                addr_label = (
-                    f"<{system_address}>" if system_address else "Unknown address"
-                )
-                lines = [f"Hidden markets detected in {system_name} ({addr_label}):"]
+                if system_address:
+                    system_label = f"[{system_name}](<{system_address}>)"
+                else:
+                    system_label = f"{system_name} (Unknown address)"
+                lines = [f"Hidden markets detected in {system_label}:"]
 
                 for station_name, station_data in system_data["stations"].items():
                     metals_str = "; ".join(
@@ -152,8 +153,8 @@ class DiscordMessenger:
                         for metal, stock in station_data["metals"]
                     )
                     lines.append(
-                        f"- {station_name} ({station_data['station_type']}), "
-                        f"<{station_data['url']}> - {metals_str}"
+                        f"- [{station_name}](<{station_data['url']}>) "
+                        f"({station_data['station_type']}) - {metals_str}"
                     )
 
                 # Add powerplay lines for this system

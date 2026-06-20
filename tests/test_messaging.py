@@ -1363,3 +1363,70 @@ def test_build_message_formats_stock_with_commas():
     # Ensure raw unformatted numbers are NOT present
     assert "stock: 25000" not in message
     assert "stock: 18000" not in message
+
+
+def test_build_message_uses_masked_links():
+    """System and station URLs should render as Discord masked links using names."""
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        mock_client,
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "https://inara.cz/elite/system/123/",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/456/",
+            "metal": "Gold",
+            "stock": 25000,
+        },
+    ]
+
+    message = messenger._build_message(entries, [], {})
+
+    assert "[Sol](<https://inara.cz/elite/system/123/>)" in message
+    assert "[Abraham Lincoln](<https://inara.cz/station/456/>)" in message
+    assert "Hidden markets detected in [Sol]" in message
+
+
+def test_build_message_masked_link_without_system_address():
+    """Falls back to plain name when system_address is missing."""
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        mock_client,
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    entries = [
+        {
+            "system_name": "Sol",
+            "system_address": "",
+            "station_name": "Abraham Lincoln",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/station/456/",
+            "metal": "Gold",
+            "stock": 25000,
+        },
+    ]
+
+    message = messenger._build_message(entries, [], {})
+
+    assert "Sol (Unknown address)" in message
+    assert "[Sol](" not in message
