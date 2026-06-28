@@ -1,7 +1,12 @@
+## [1.7.3] - 2026-06-28
+
+### Fixed
+- **Discord message splitting**: Preserves masked Inara links when splitting long alerts across multiple Discord messages.
+
 ## [1.7.2] - 2026-06-28
 
-## Fixed
-- **Mesage length**: Fixed issue where messages could exceed 2000 characters and fail to send to Discord.
+### Fixed
+- **Message length**: Fixed issue where messages could exceed 2000 characters and fail to send to Discord.
 
 ## [1.7.1] - 2026-06-20
 
