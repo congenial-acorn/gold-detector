@@ -217,16 +217,27 @@ class DiscordMessenger:
         current = ""
 
         for line in message.splitlines(keepends=True):
+            if len(line) <= DISCORD_MESSAGE_LIMIT:
+                if current and len(current) + len(line) > DISCORD_MESSAGE_LIMIT:
+                    chunks.append(current.rstrip())
+                    current = ""
+                current += line
+                continue
+
             while line:
                 remaining = DISCORD_MESSAGE_LIMIT - len(current)
                 if len(line) <= remaining:
                     current += line
                     break
 
-                current += line[:remaining]
+                split_at = line.rfind(" ", 0, remaining + 1)
+                if split_at <= 0:
+                    split_at = remaining
+
+                current += line[:split_at]
                 chunks.append(current.rstrip())
                 current = ""
-                line = line[remaining:]
+                line = line[split_at:].lstrip()
 
         if current:
             chunks.append(current.rstrip())

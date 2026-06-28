@@ -1461,6 +1461,35 @@ def test_message_chunks_stays_within_discord_limit():
 
     chunks = messenger._message_chunks(message)
 
-    assert len(chunks) == 2
+    assert len(chunks) == 3
     assert all(len(chunk) <= DISCORD_MESSAGE_LIMIT for chunk in chunks)
     assert "".join(chunks).replace("\n", "") == message.replace("\n", "")
+
+
+def test_message_chunks_keeps_markdown_links_intact():
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        _discord_client(mock_client),
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    link_line = (
+        "You can earn merits by trading for a large profit: "
+        "[Sell Silver here](<https://inara.cz/elite/commodities/?formbrief=1"
+        "&pi1=2&pa1%5B%5D=46&ps1=HIP+17597&pi10=3&pi11=30&pi3=1>)"
+    )
+    message = "A" * 1990 + "\n" + link_line
+
+    chunks = messenger._message_chunks(message)
+
+    assert len(chunks) == 2
+    assert all(len(chunk) <= DISCORD_MESSAGE_LIMIT for chunk in chunks)
+    assert link_line not in chunks[0]
+    assert link_line in chunks[1]
