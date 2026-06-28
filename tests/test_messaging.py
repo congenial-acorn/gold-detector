@@ -1,9 +1,12 @@
 import asyncio
+from typing import Any, cast
 
 
 # Ensure the repository root is on the import path for the tests.
 import sys
 from pathlib import Path
+
+import discord
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -12,8 +15,17 @@ from gold_detector.messaging import DISCORD_MESSAGE_LIMIT, DiscordMessenger
 
 
 class _DummyClient:
+    user: Any
+    guilds: list[Any]
+
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
+        self.user = None
+        self.guilds = []
+
+
+def _discord_client(client: object) -> discord.Client:
+    return cast(discord.Client, cast(object, client))
 
 
 def _settings() -> Settings:
@@ -97,7 +109,7 @@ def test_dispatch_from_database_reads_entries():
         mock_db.check_cooldown.return_value = True
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -179,7 +191,7 @@ def test_dispatch_from_database_checks_cooldowns():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -256,7 +268,7 @@ def test_dispatch_from_database_marks_sent():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -340,7 +352,7 @@ def test_dispatch_from_database_applies_preferences():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -419,7 +431,7 @@ def test_dispatch_from_database_includes_role_mentions():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -501,7 +513,7 @@ def test_dispatch_from_database_handles_powerplay():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -605,7 +617,7 @@ def test_dispatch_per_recipient_filtering():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -693,7 +705,7 @@ def test_dispatch_partial_metal_cooldown():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -770,7 +782,7 @@ def test_dispatch_empty_filtered_result():
         mock_subscribers.all.return_value = []
 
         messenger = DiscordMessenger(
-            mock_client,
+            _discord_client(mock_client),
             _settings(),
             mock_guild_prefs,
             mock_opt_outs,
@@ -795,7 +807,7 @@ def test_dispatch_empty_filtered_result():
 def test_filter_entries_by_station_type():
     """Test filtering entries by station_type preference."""
     # Entry format matching MarketDatabase read_all_entries output
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -839,7 +851,7 @@ def test_filter_entries_by_station_type():
 
 def test_filter_entries_by_commodity():
     """Test filtering entries by commodity preference."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -875,7 +887,7 @@ def test_filter_entries_by_commodity():
 
 def test_filter_entries_by_powerplay():
     """Test filtering entries by powerplay preference."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "power": "Zachary Hudson",
@@ -911,7 +923,7 @@ def test_filter_entries_by_powerplay():
 
 def test_filter_entries_no_preferences_returns_all():
     """Test that no preferences returns all entries."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -939,7 +951,7 @@ def test_filter_entries_no_preferences_returns_all():
 
 def test_filter_entries_empty_preferences_returns_all():
     """Test that empty preference values returns all entries."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -959,7 +971,7 @@ def test_filter_entries_empty_preferences_returns_all():
 
 def test_filter_entries_non_matching_filtered_out():
     """Test that entries without matching preferences are filtered out."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -1018,7 +1030,7 @@ def test_filter_entries_non_matching_filtered_out():
 
 def test_filter_entries_mixed_some_pass_some_filtered():
     """Test filtering with mixed entries - some pass, some filtered."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -1096,7 +1108,7 @@ def test_filter_entries_mixed_some_pass_some_filtered():
 
 def test_filter_entries_case_insensitive():
     """Test that filtering is case-insensitive."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -1145,7 +1157,7 @@ def test_filter_entries_case_insensitive():
 
 def test_filter_entries_all_filters_must_pass():
     """Test that entries must pass ALL applicable filters (AND logic)."""
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -1211,7 +1223,7 @@ def test_powerplay_message_with_commodity_urls_fortified():
     mock_client.guilds = []
 
     messenger = DiscordMessenger(
-        mock_client,
+        _discord_client(mock_client),
         _settings(),
         guild_prefs=Mock(get_preferences=lambda x, y: {}),
         opt_outs=Mock(is_opted_out=lambda x: False),
@@ -1249,7 +1261,7 @@ def test_powerplay_message_with_commodity_urls_stronghold():
     mock_client.guilds = []
 
     messenger = DiscordMessenger(
-        mock_client,
+        _discord_client(mock_client),
         _settings(),
         guild_prefs=Mock(get_preferences=lambda x, y: {}),
         opt_outs=Mock(is_opted_out=lambda x: False),
@@ -1289,7 +1301,7 @@ def test_powerplay_message_without_commodity_urls():
     mock_client.guilds = []
 
     messenger = DiscordMessenger(
-        mock_client,
+        _discord_client(mock_client),
         _settings(),
         guild_prefs=Mock(get_preferences=lambda x, y: {}),
         opt_outs=Mock(is_opted_out=lambda x: False),
@@ -1327,14 +1339,14 @@ def test_build_message_formats_stock_with_commas():
     mock_client.guilds = []
 
     messenger = DiscordMessenger(
-        mock_client,
+        _discord_client(mock_client),
         _settings(),
         guild_prefs=Mock(get_preferences=lambda x, y: {}),
         opt_outs=Mock(is_opted_out=lambda x: False),
         subscribers=Mock(all=lambda: []),
     )
 
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "1234",
@@ -1372,14 +1384,14 @@ def test_build_message_uses_masked_links():
     mock_client.guilds = []
 
     messenger = DiscordMessenger(
-        mock_client,
+        _discord_client(mock_client),
         _settings(),
         guild_prefs=Mock(get_preferences=lambda x, y: {}),
         opt_outs=Mock(is_opted_out=lambda x: False),
         subscribers=Mock(all=lambda: []),
     )
 
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "https://inara.cz/elite/system/123/",
@@ -1406,14 +1418,14 @@ def test_build_message_masked_link_without_system_address():
     mock_client.guilds = []
 
     messenger = DiscordMessenger(
-        mock_client,
+        _discord_client(mock_client),
         _settings(),
         guild_prefs=Mock(get_preferences=lambda x, y: {}),
         opt_outs=Mock(is_opted_out=lambda x: False),
         subscribers=Mock(all=lambda: []),
     )
 
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "system_name": "Sol",
             "system_address": "",
@@ -1438,7 +1450,7 @@ def test_message_chunks_stays_within_discord_limit():
     mock_client.guilds = []
 
     messenger = DiscordMessenger(
-        mock_client,
+        _discord_client(mock_client),
         _settings(),
         guild_prefs=Mock(get_preferences=lambda x, y: {}),
         opt_outs=Mock(is_opted_out=lambda x: False),
