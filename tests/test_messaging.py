@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from gold_detector.config import Settings
-from gold_detector.messaging import DiscordMessenger
+from gold_detector.messaging import DISCORD_MESSAGE_LIMIT, DiscordMessenger
 
 
 class _DummyClient:
@@ -1429,3 +1429,26 @@ def test_build_message_masked_link_without_system_address():
 
     assert "Sol (Unknown address)" in message
     assert "[Sol](" not in message
+
+
+def test_message_chunks_stays_within_discord_limit():
+    from unittest.mock import Mock
+
+    mock_client = Mock()
+    mock_client.guilds = []
+
+    messenger = DiscordMessenger(
+        mock_client,
+        _settings(),
+        guild_prefs=Mock(get_preferences=lambda x, y: {}),
+        opt_outs=Mock(is_opted_out=lambda x: False),
+        subscribers=Mock(all=lambda: []),
+    )
+
+    message = "Header\n" + "A" * 1998 + "\nFooter"
+
+    chunks = messenger._message_chunks(message)
+
+    assert len(chunks) == 2
+    assert all(len(chunk) <= DISCORD_MESSAGE_LIMIT for chunk in chunks)
+    assert "".join(chunks).replace("\n", "") == message.replace("\n", "")

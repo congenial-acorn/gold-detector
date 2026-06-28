@@ -15,6 +15,8 @@ from .services import (
     SubscriberService,
 )
 
+DISCORD_MESSAGE_LIMIT = 2000
+
 if TYPE_CHECKING:
     from .market_database import MarketDatabase
 
@@ -206,6 +208,30 @@ class DiscordMessenger:
             return "\n".join(messages)
         else:
             return ""
+
+    def _message_chunks(self, message: str) -> list[str]:
+        if len(message) <= DISCORD_MESSAGE_LIMIT:
+            return [message]
+
+        chunks: list[str] = []
+        current = ""
+
+        for line in message.splitlines(keepends=True):
+            while line:
+                remaining = DISCORD_MESSAGE_LIMIT - len(current)
+                if len(line) <= remaining:
+                    current += line
+                    break
+
+                current += line[:remaining]
+                chunks.append(current.rstrip())
+                current = ""
+                line = line[remaining:]
+
+        if current:
+            chunks.append(current.rstrip())
+
+        return chunks
 
     def _resolve_sendable_channel(
         self, guild: discord.Guild
@@ -421,14 +447,13 @@ class DiscordMessenger:
                 continue
 
             try:
-                await channel.send(
-                    message,
-                    allowed_mentions=(
-                        AllowedMentions(roles=True, users=False, everyone=False)
-                        if self.guild_prefs.pings_enabled(guild.id)
-                        else AllowedMentions.none()
-                    ),
+                allowed_mentions = (
+                    AllowedMentions(roles=True, users=False, everyone=False)
+                    if self.guild_prefs.pings_enabled(guild.id)
+                    else AllowedMentions.none()
                 )
+                for chunk in self._message_chunks(message):
+                    _ = await channel.send(chunk, allowed_mentions=allowed_mentions)
 
                 # Mark cooldowns AFTER sending message
                 if cooldown_keys:
@@ -568,7 +593,8 @@ class DiscordMessenger:
 
             try:
                 user = await self.client.fetch_user(user_id)
-                await user.send(message, allowed_mentions=AllowedMentions.none())
+                for chunk in self._message_chunks(message):
+                    _ = await user.send(chunk, allowed_mentions=AllowedMentions.none())
 
                 # Mark cooldowns AFTER sending message
                 if cooldown_keys:
