@@ -130,7 +130,7 @@ def test_dispatch_from_database_checks_sent_state():
     async def _run():
         loop = asyncio.get_running_loop()
 
-        # Create mock database with TWO metals - one passes cooldown, one doesn't
+        # Create mock database with TWO metals - one already sent, one not
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
             "Sol": {
@@ -1210,8 +1210,8 @@ def test_dispatch_per_recipient_filtering():
     asyncio.run(_run())
 
 
-def test_dispatch_partial_metal_cooldown():
-    """Test that only metals passing cooldown are included in message."""
+def test_dispatch_partial_metal_sent_state():
+    """Test that only metals not yet sent are included in message."""
     from unittest.mock import Mock, AsyncMock
     from gold_detector.market_database import MarketDatabase
 

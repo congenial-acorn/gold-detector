@@ -29,7 +29,7 @@ def count_save_calls(db: MarketDatabase) -> Generator[None, None, None]:
         db = MarketDatabase(path)
         with count_save_calls(db):
             db.write_market_entry(...)
-            db.mark_sent(...)
+            db.mark_market_alerts_sent_batch([...])
             assert db.save_count == 2
     """
     setattr(db, "save_count", 0)
