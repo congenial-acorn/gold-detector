@@ -314,6 +314,24 @@ class MarketDatabase:
 
             logger.info("Successfully saved powerplay entry for system %s", system_name)
 
+    def clear_powerplay_entry(self, system_name: str) -> None:
+        """Remove powerplay data for a system, preserving stations and metals.
+
+        No-op if the system is unknown or has no powerplay block.
+        Used when a system refreshes as non-Fortified/Stronghold so stale
+        powerplay data does not keep appearing in future market messages.
+        """
+        logger.info("clear_powerplay_entry called: system_name=%s", system_name)
+        with self._lock:
+            system = self._data.get(system_name)
+            if system is None:
+                return
+            if "powerplay" not in system:
+                return
+            del system["powerplay"]
+            self._save_locked()
+            logger.info("Cleared stale powerplay entry for system %s", system_name)
+
     def read_all_entries(self) -> DatabaseData:
         """
         Read all market entries from the database.

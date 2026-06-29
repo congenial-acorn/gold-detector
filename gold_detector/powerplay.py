@@ -53,6 +53,17 @@ def _build_commodity_ids(system: List[str]) -> List[int]:
     return [_name_to_id[item] for item in system if item in _name_to_id]
 
 
+def _clear_stale_powerplay(
+    market_db: Optional[MarketDatabase], system_name: Optional[str]
+) -> None:
+    """Clear stale powerplay data when a system is no longer a Fortified/Stronghold opportunity.
+
+    Guards against missing market_db (standalone caller) and empty system names.
+    """
+    if market_db and system_name:
+        market_db.clear_powerplay_entry(system_name)
+
+
 def get_powerplay_status(
     systems, market_db: Optional[MarketDatabase] = None
 ) -> Set[str]:
@@ -78,6 +89,7 @@ def get_powerplay_status(
                 logger.info(
                     "No Powerplay section found for %s", system_name or system_url
                 )
+                _clear_stale_powerplay(market_db, system_name)
                 continue
 
             block = label.find_parent("div")
@@ -85,6 +97,7 @@ def get_powerplay_status(
                 logger.info(
                     "Powerplay section malformed for %s", system_name or system_url
                 )
+                _clear_stale_powerplay(market_db, system_name)
                 continue
 
             fields = _parse_powerplay_fields(block)
@@ -95,6 +108,7 @@ def get_powerplay_status(
                     "Powerplay section present but empty for %s",
                     system_name or system_url,
                 )
+                _clear_stale_powerplay(market_db, system_name)
                 continue
 
             msg = f"Powerplay info for {system_name or system_url}: " + "; ".join(
@@ -108,6 +122,7 @@ def get_powerplay_status(
                 logger.debug(
                     "Powerplay status is Unoccupied for %s", system_name or system_url
                 )
+                _clear_stale_powerplay(market_db, system_name)
                 continue
 
             if status_text == "Fortified":
@@ -119,6 +134,7 @@ def get_powerplay_status(
                         "No commodity links found for Fortified system %s",
                         system_name or system_url,
                     )
+                    _clear_stale_powerplay(market_db, system_name)
                     continue
 
                 masked_links = mask_commodity_links(commodity_url)
@@ -149,6 +165,7 @@ def get_powerplay_status(
                         "No commodity links found for Stronghold system %s",
                         system_name or system_url,
                     )
+                    _clear_stale_powerplay(market_db, system_name)
                     continue
 
                 masked_links = mask_commodity_links(commodity_url)
@@ -169,6 +186,15 @@ def get_powerplay_status(
                     fields["power"],
                     status_text,
                 )
+
+            else:
+                logger.info(
+                    "Powerplay status %s is not Fortified/Stronghold for %s",
+                    status_text,
+                    system_name or system_url,
+                )
+                _clear_stale_powerplay(market_db, system_name)
+
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "Failed to fetch Powerplay status from %s: %s",

@@ -264,6 +264,202 @@ def test_build_commodity_ids_silver_only():
     assert result == [46]
 
 
+def test_powerplay_unoccupied_clears_existing_db_entry(monkeypatch, tmp_path):
+    """When a system refreshes as Unoccupied, stale powerplay is cleared from DB."""
+    from gold_detector.market_database import MarketDatabase
+
+    db = MarketDatabase(tmp_path / "market_database.json")
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/elite/station/-1/",
+        metal="Gold",
+        stock=25000,
+    )
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+        commodity_urls="[Sell gold here](https://inara.cz/old)",
+    )
+
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Unoccupied"))
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    result = powerplay.get_powerplay_status(systems, market_db=db)
+
+    data = db.read_all_entries()
+    assert "powerplay" not in data["Sol"]
+    assert (
+        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+    )
+    assert result == set()
+
+
+def test_powerplay_no_section_clears_existing_db_entry(monkeypatch, tmp_path):
+    """When a system's page has no Powerplay section, stale powerplay is cleared."""
+    from gold_detector.market_database import MarketDatabase
+
+    db = MarketDatabase(tmp_path / "market_database.json")
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+        commodity_urls="old links",
+    )
+
+    no_pp_html = "<html><body><h2>Sol</h2><div>no powerplay here</div></body></html>"
+    monkeypatch.setattr(powerplay, "http_get", lambda url: FakeResponse(no_pp_html))
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    result = powerplay.get_powerplay_status(systems, market_db=db)
+
+    data = db.read_all_entries()
+    assert "powerplay" not in data["Sol"]
+    assert result == set()
+
+
+def test_powerplay_non_fortified_stronghold_status_clears_db(monkeypatch, tmp_path):
+    """When status is Contested/Exploited (not Fortified/Stronghold), stale powerplay cleared."""
+    from gold_detector.market_database import MarketDatabase
+
+    db = MarketDatabase(tmp_path / "market_database.json")
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+        commodity_urls="old links",
+    )
+
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Contested"))
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    result = powerplay.get_powerplay_status(systems, market_db=db)
+
+    data = db.read_all_entries()
+    assert "powerplay" not in data["Sol"]
+    assert result == set()
+
+
+def test_powerplay_fortified_no_links_clears_db(monkeypatch, tmp_path):
+    """Fortified system with no commodity links clears stale powerplay."""
+    from unittest.mock import Mock
+
+    from gold_detector.market_database import MarketDatabase
+
+    db = MarketDatabase(tmp_path / "market_database.json")
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+        commodity_urls="old links",
+    )
+
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
+    )
+    monkeypatch.setattr(
+        powerplay,
+        "assemble_commodity_links",
+        Mock(return_value=""),
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    result = powerplay.get_powerplay_status(systems, market_db=db)
+
+    data = db.read_all_entries()
+    assert "powerplay" not in data["Sol"]
+    assert result == set()
+
+
+def test_powerplay_fortified_writes_to_real_db_no_regression(monkeypatch, tmp_path):
+    """Fortified happy path still writes powerplay entry to real DB."""
+    import json
+
+    from unittest.mock import Mock
+
+    from gold_detector.market_database import MarketDatabase
+
+    db_path = tmp_path / "market_database.json"
+    db = MarketDatabase(db_path)
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
+    )
+    monkeypatch.setattr(
+        powerplay,
+        "assemble_commodity_links",
+        Mock(return_value="http://example.com/links"),
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    result = powerplay.get_powerplay_status(systems, market_db=db)
+
+    with open(db_path) as f:
+        data = json.load(f)
+    assert data["Sol"]["powerplay"]["status"] == "Fortified"
+    assert result == {"Sol"}
+
+
+def test_powerplay_stale_clear_preserves_market_data(monkeypatch, tmp_path):
+    """Clearing stale powerplay preserves all station/metal market data."""
+    from gold_detector.market_database import MarketDatabase
+
+    db = MarketDatabase(tmp_path / "market_database.json")
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/elite/station/-1/",
+        metal="Gold",
+        stock=25000,
+    )
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/elite/station/-1/",
+        metal="Silver",
+        stock=60000,
+    )
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="https://inara.cz/elite/starsystem/345798/",
+        power="Zachary Hudson",
+        status="Stronghold",
+        progress=80,
+        commodity_urls="old links",
+    )
+
+    monkeypatch.setattr(
+        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Unoccupied"))
+    )
+
+    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    powerplay.get_powerplay_status(systems, market_db=db)
+
+    data = db.read_all_entries()
+    assert "powerplay" not in data["Sol"]
+    metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+    assert metals["Gold"]["stock"] == 25000
+    assert metals["Silver"]["stock"] == 60000
+
+
 def test_dispatch_refresh_shows_fresh_powerplay_links_in_same_market_message(
     monkeypatch,
 ):
@@ -301,8 +497,6 @@ def test_dispatch_refresh_shows_fresh_powerplay_links_in_same_market_message(
             debug_server_id=None,
             debug_mode_dms=False,
             debug_user_id=None,
-            cooldown_hours=48,
-            cooldown_seconds=48 * 3600,
             queue_max_size=10,
             help_url="https://example.com",
             monitor_interval_seconds=1.0,

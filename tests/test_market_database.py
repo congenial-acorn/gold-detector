@@ -386,6 +386,57 @@ def test_concurrent_writes_and_batch_marks_do_not_corrupt_file(db, db_path):
     assert data["Sol"]["stations"]["Station1"]["metals"]["Gold"]["sent_to"]["guild"]
 
 
+def test_clear_powerplay_entry_removes_powerplay_but_preserves_stations(db, db_path):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+        commodity_urls="links",
+    )
+
+    db.clear_powerplay_entry("Sol")
+
+    data = load_data(db_path)
+    assert "powerplay" not in data["Sol"]
+    assert (
+        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
+    )
+
+
+def test_clear_powerplay_entry_noop_when_system_absent(db):
+    db.clear_powerplay_entry("Nonexistent")
+    assert db.read_all_entries() == {}
+
+
+def test_clear_powerplay_entry_noop_when_no_powerplay_key(db, db_path):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+
+    db.clear_powerplay_entry("Sol")
+
+    data = load_data(db_path)
+    assert "powerplay" not in data["Sol"]
+    assert "Gold" in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+
+
 def test_atomic_write_does_not_replace_existing_file_on_save_failure(
     db, db_path, monkeypatch
 ):
