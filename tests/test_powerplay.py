@@ -114,8 +114,8 @@ def test_get_powerplay_status_writes_to_database(monkeypatch):
     assert call_args[1]["progress"] == "51.8%"
 
 
-def test_get_powerplay_status_uses_database_for_cooldowns(monkeypatch):
-    """Test that get_powerplay_status writes to database."""
+def test_get_powerplay_status_writes_entry_for_fortified_system(monkeypatch):
+    """Test that get_powerplay_status persists Fortified entries to MarketDatabase."""
     from unittest.mock import Mock
 
     from gold_detector.market_database import MarketDatabase
@@ -134,8 +134,8 @@ def test_get_powerplay_status_uses_database_for_cooldowns(monkeypatch):
     assert call_args[1]["system_name"] == "Sol"
 
 
-def test_get_powerplay_status_respects_database_cooldown(monkeypatch):
-    """Test that get_powerplay_status writes to database regardless of cooldown (dispatch handles cooldown)."""
+def test_get_powerplay_status_always_writes_regardless_of_state(monkeypatch):
+    """Test that get_powerplay_status always writes to the database (no cooldown gating remains)."""
     from unittest.mock import Mock
 
     from gold_detector.market_database import MarketDatabase

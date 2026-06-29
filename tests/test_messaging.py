@@ -68,7 +68,12 @@ def test_dispatch_from_database_reads_entries():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
+                        "metals": {
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            }
+                        },
                     }
                 },
             }
@@ -141,8 +146,14 @@ def test_dispatch_from_database_checks_sent_state():
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
                         "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}},
-                            "Palladium": {"stock": 18000, "cooldowns": {}},
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            },
+                            "Palladium": {
+                                "stock": 18000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            },
                         },
                     }
                 },
@@ -229,7 +240,12 @@ def test_dispatch_from_database_marks_sent_after_successful_send():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
+                        "metals": {
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            }
+                        },
                     }
                 },
             }
@@ -595,7 +611,12 @@ def test_dispatch_from_database_applies_preferences():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
+                        "metals": {
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            }
+                        },
                     }
                 },
             }
@@ -670,7 +691,12 @@ def test_dispatch_from_database_includes_role_mentions():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
+                        "metals": {
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            }
+                        },
                     }
                 },
             }
@@ -1119,8 +1145,14 @@ def test_dispatch_per_recipient_filtering():
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
                         "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}},
-                            "Palladium": {"stock": 18000, "cooldowns": {}},
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            },
+                            "Palladium": {
+                                "stock": 18000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            },
                         },
                     }
                 },
@@ -1229,8 +1261,14 @@ def test_dispatch_partial_metal_sent_state():
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
                         "metals": {
-                            "Gold": {"stock": 25000, "cooldowns": {}},
-                            "Palladium": {"stock": 18000, "cooldowns": {}},
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            },
+                            "Palladium": {
+                                "stock": 18000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            },
                         },
                     }
                 },
@@ -1313,7 +1351,12 @@ def test_dispatch_empty_filtered_result():
                     "Abraham Lincoln": {
                         "station_type": "Coriolis Starport",
                         "url": "https://inara.cz/station/1234/",
-                        "metals": {"Gold": {"stock": 25000, "cooldowns": {}}},
+                        "metals": {
+                            "Gold": {
+                                "stock": 25000,
+                                "sent_to": {"guild": {}, "user": {}},
+                            }
+                        },
                     }
                 },
             }

@@ -349,13 +349,15 @@ class DiscordMessenger:
             current_data = market_db.read_all_entries()
 
             for refreshed_system_name in refreshed_systems:
+                refreshed_entry = current_data.get(refreshed_system_name)
                 powerplay_refresh_cache[refreshed_system_name] = (
-                    current_data.get(refreshed_system_name, {}).get("powerplay") or None
+                    refreshed_entry.get("powerplay") if refreshed_entry else None
                 )
 
             for system_name in uncached_systems:
+                cached_entry = current_data.get(system_name)
                 powerplay_refresh_cache[system_name] = (
-                    current_data.get(system_name, {}).get("powerplay") or None
+                    cached_entry.get("powerplay") if cached_entry else None
                 )
 
             return current_data

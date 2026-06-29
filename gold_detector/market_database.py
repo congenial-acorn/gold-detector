@@ -156,6 +156,8 @@ class MarketDatabase:
 
             for station_data in system_data["stations"].values():
                 metals = station_data.get("metals")
+                if not isinstance(metals, dict):
+                    continue
                 for metal_name, metal_data in list(metals.items()):
                     normalized = self._normalize_metal_entry(metal_data)
                     if not isinstance(metal_data, dict):
