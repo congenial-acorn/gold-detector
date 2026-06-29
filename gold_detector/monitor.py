@@ -74,7 +74,10 @@ def monitor_metals(
             if market_db:
                 market_db.begin_scan()
 
+            # scanned_systems is kept for logging only — pruning is driven by
+            # current_opportunities (threshold-passing tuples), NOT scanned_systems.
             scanned_systems = set()
+            current_opportunities: set[tuple[str, str, str]] = set()
             market_urls = get_station_market_urls(near_urls)
 
             stations_checked = 0
@@ -136,6 +139,7 @@ def monitor_metals(
                             st_type = get_station_type(station_id)
 
                             _update_systems(systems, system_address, metal)
+                            current_opportunities.add((system_name, st_name, metal))
 
                             if market_db:
                                 market_db.write_market_entry(
@@ -175,6 +179,7 @@ def monitor_metals(
             logger.info("Starting Powerplay check.")
 
             system_list = [[url] + found for url, found in systems.items()]
+            powerplay_systems: set[str] = set()
             if market_db:
                 powerplay_systems = get_powerplay_status(
                     system_list, market_db=market_db
@@ -189,7 +194,7 @@ def monitor_metals(
                 get_powerplay_status(system_list)
 
             if market_db:
-                market_db.end_scan(scanned_systems)
+                market_db.end_scan(current_opportunities, powerplay_systems)
 
             try:
                 emit_loop_done()

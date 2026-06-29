@@ -95,10 +95,9 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
         stock=20000,
     )
     mock_db.end_scan.assert_called_once()
-    # Verify end_scan was called with a set containing the scanned system
+    # end_scan receives active opportunity tuples, not scanned system names
     call_args = mock_db.end_scan.call_args
-    assert isinstance(call_args[0][0], set)
-    assert "Example System" in call_args[0][0]
+    assert call_args[0][0] == {("Example System", "Example Station", "Gold")}
 
 
 HTML_SILVER_TEMPLATE = """
@@ -173,8 +172,7 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
     )
     mock_db.end_scan.assert_called_once()
     call_args = mock_db.end_scan.call_args
-    assert isinstance(call_args[0][0], set)
-    assert "Silver System" in call_args[0][0]
+    assert call_args[0][0] == {("Silver System", "Silver Station", "Silver")}
 
 
 # ---------------------------------------------------------------------------
@@ -318,3 +316,6 @@ def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
         )
 
     mock_db.write_market_entry.assert_not_called()
+    # Non-threshold commodity must NOT appear in active opportunities
+    call_args = mock_db.end_scan.call_args
+    assert call_args[0][0] == set()
