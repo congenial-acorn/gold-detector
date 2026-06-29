@@ -102,7 +102,7 @@ class MarketDatabase:
             stock: Current stock amount
         """
         with self._lock:
-            data = self._load()
+            data = self._data
 
             # Ensure system exists
             if system_name not in data:
@@ -148,7 +148,11 @@ class MarketDatabase:
                 "cooldowns": existing_cooldowns,
             }
 
-            self._save(data)
+            try:
+                self._save(self._data)
+            except Exception:
+                self._data = self._load()
+                raise
 
     def write_powerplay_entry(
         self,
@@ -182,7 +186,7 @@ class MarketDatabase:
             commodity_urls,
         )
         with self._lock:
-            data = self._load()
+            data = self._data
 
             # Ensure system exists
             if system_name not in data:
@@ -218,7 +222,11 @@ class MarketDatabase:
                 data[system_name].get("powerplay"),
             )
 
-            self._save(data)
+            try:
+                self._save(self._data)
+            except Exception:
+                self._data = self._load()
+                raise
 
             logger.info("Successfully saved powerplay entry for system %s", system_name)
 
@@ -230,7 +238,7 @@ class MarketDatabase:
             Dictionary containing all systems with their stations, metals, and powerplay data
         """
         with self._lock:
-            return self._load()
+            return self._data
 
     def check_cooldown(
         self,
@@ -258,7 +266,7 @@ class MarketDatabase:
             True if no cooldown exists or cooldown has expired, False otherwise
         """
         with self._lock:
-            data = self._load()
+            data = self._data
 
             # Check if path exists
             if system_name not in data:
@@ -304,7 +312,7 @@ class MarketDatabase:
             recipient_id: Unique recipient ID
         """
         with self._lock:
-            data = self._load()
+            data = self._data
 
             # Ensure path exists (should already exist from write_market_entry)
             if system_name not in data:
@@ -329,7 +337,11 @@ class MarketDatabase:
             # Set current timestamp
             metal_data["cooldowns"][recipient_type][recipient_id] = time.time()
 
-            self._save(data)
+            try:
+                self._save(self._data)
+            except Exception:
+                self._data = self._load()
+                raise
 
     def mark_sent_batch(self, cooldowns: List[Tuple[str, str, str, str, str]]) -> None:
         """
@@ -351,7 +363,7 @@ class MarketDatabase:
             return
 
         with self._lock:
-            data = self._load()
+            data = self._data
 
             for (
                 system_name,
@@ -382,7 +394,11 @@ class MarketDatabase:
 
                 metal_data["cooldowns"][recipient_type][recipient_id] = time.time()
 
-            self._save(data)
+            try:
+                self._save(self._data)
+            except Exception:
+                self._data = self._load()
+                raise
 
     def check_powerplay_cooldown(
         self,
@@ -404,7 +420,7 @@ class MarketDatabase:
             True if no cooldown exists or cooldown has expired, False otherwise
         """
         with self._lock:
-            data = self._load()
+            data = self._data
             if system_name not in data:
                 return True
             if "powerplay" not in data[system_name]:
@@ -435,7 +451,7 @@ class MarketDatabase:
             recipient_id: Unique recipient ID
         """
         with self._lock:
-            data = self._load()
+            data = self._data
             if system_name not in data:
                 return
             if "powerplay" not in data[system_name]:
@@ -446,7 +462,11 @@ class MarketDatabase:
             if recipient_type not in powerplay["cooldowns"]:
                 powerplay["cooldowns"][recipient_type] = {}
             powerplay["cooldowns"][recipient_type][recipient_id] = time.time()
-            self._save(data)
+            try:
+                self._save(self._data)
+            except Exception:
+                self._data = self._load()
+                raise
 
     def mark_powerplay_sent_batch(self, cooldowns: List[Tuple[str, str, str]]) -> None:
         """
@@ -457,7 +477,7 @@ class MarketDatabase:
                       (system_name: str, recipient_type: str, recipient_id: str)
         """
         with self._lock:
-            data = self._load()
+            data = self._data
 
             for system_name, recipient_type, recipient_id in cooldowns:
                 if system_name not in data:
@@ -472,7 +492,11 @@ class MarketDatabase:
 
                 powerplay["cooldowns"][recipient_type][recipient_id] = time.time()
 
-            self._save(data)
+            try:
+                self._save(self._data)
+            except Exception:
+                self._data = self._load()
+                raise
 
     def prune_stale(
         self, current_systems: Set[str], cooldown_ttl_seconds: float = 0.05
@@ -495,7 +519,7 @@ class MarketDatabase:
             cooldown_ttl_seconds,
         )
         with self._lock:
-            data = self._load()
+            data = self._data
             systems_to_remove = []
 
             for system_name in data.keys():
@@ -548,7 +572,11 @@ class MarketDatabase:
                 len(systems_to_remove),
             )
 
-            self._save(data)
+            try:
+                self._save(self._data)
+            except Exception:
+                self._data = self._load()
+                raise
 
     def begin_scan(self) -> None:
         """
