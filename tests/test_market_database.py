@@ -1,47 +1,90 @@
-"""
-Tests for MarketDatabase class following TDD RED phase.
-
-These tests define the expected behavior of the MarketDatabase class
-which manages market data, powerplay status, and cooldown tracking
-for Elite Dangerous stations.
-
-Expected to FAIL with ImportError until MarketDatabase is implemented.
-"""
-
 import json
 import sys
 import threading
-import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-# Ensure the repository root is on the import path for the tests.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# This import will fail - expected in RED phase
 from gold_detector.market_database import MarketDatabase
 
 
 @pytest.fixture
 def db_path(tmp_path):
-    """Provide a temporary path for test database files."""
     return tmp_path / "market_database.json"
 
 
 @pytest.fixture
 def db(db_path):
-    """Provide a MarketDatabase instance for testing."""
     return MarketDatabase(db_path)
 
 
-# ============================================================================
-# write_market_entry() tests
-# ============================================================================
+def load_data(path: Path) -> dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
-def test_write_market_entry_creates_new_system(db, db_path):
-    """Test that write_market_entry creates a new system entry if it doesn't exist."""
+def assert_no_cooldowns(value):
+    if isinstance(value, dict):
+        assert "cooldowns" not in value
+        for nested in value.values():
+            assert_no_cooldowns(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            assert_no_cooldowns(nested)
+
+
+def test_init_migrates_legacy_cooldowns_from_metals_and_powerplay(db_path):
+    legacy_data = {
+        "Sol": {
+            "system_address": "10477373803",
+            "powerplay": {
+                "power": "Zachary Hudson",
+                "status": "Fortified",
+                "progress": 75,
+                "commodity_urls": "links",
+                "cooldowns": {"guild": {"1": 123.0}},
+            },
+            "stations": {
+                "Abraham Lincoln": {
+                    "station_type": "Coriolis Starport",
+                    "url": "https://inara.cz/station/123",
+                    "metals": {
+                        "Gold": {
+                            "stock": 25000,
+                            "cooldowns": {"guild": {"1": 123.0}},
+                        },
+                        "Silver": {
+                            "stock": 50000,
+                            "sent_to": {"guild": {"2": True}, "user": {}},
+                            "cooldowns": {"user": {"3": 456.0}},
+                        },
+                    },
+                }
+            },
+        }
+    }
+    with open(db_path, "w", encoding="utf-8") as handle:
+        json.dump(legacy_data, handle, indent=2, sort_keys=True)
+
+    migrated = MarketDatabase(db_path)
+    data = migrated.read_all_entries()
+
+    assert_no_cooldowns(data)
+    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"] == {
+        "stock": 25000,
+        "sent_to": {"guild": {}, "user": {}},
+    }
+    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Silver"] == {
+        "stock": 50000,
+        "sent_to": {"guild": {"2": True}, "user": {}},
+    }
+    assert "cooldowns" not in load_data(db_path)["Sol"]["powerplay"]
+
+
+def test_write_market_entry_preserves_existing_sent_to_and_initializes_new(db, db_path):
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
@@ -51,57 +94,11 @@ def test_write_market_entry_creates_new_system(db, db_path):
         metal="Gold",
         stock=25000,
     )
-
-    # Verify data was written to file
-    assert db_path.exists()
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert "Sol" in data
-    assert data["Sol"]["system_address"] == "10477373803"
-    assert "Abraham Lincoln" in data["Sol"]["stations"]
-
-
-def test_write_market_entry_creates_new_station(db, db_path):
-    """Test that write_market_entry creates a new station if it doesn't exist."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Daedalus",
-        station_type="Orbis Starport",
-        url="https://inara.cz/station/456",
-        metal="Palladium",
-        stock=15000,
-    )
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert len(data["Sol"]["stations"]) == 2
-    assert "Abraham Lincoln" in data["Sol"]["stations"]
-    assert "Daedalus" in data["Sol"]["stations"]
-
-
-def test_write_market_entry_updates_metal_stock(db, db_path):
-    """Test that write_market_entry updates metal stock for existing entries."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
+    db.mark_market_alerts_sent_batch(
+        [
+            ("Sol", "Abraham Lincoln", "Gold", "guild", "123"),
+            ("Sol", "Abraham Lincoln", "Gold", "user", "456"),
+        ]
     )
 
     db.write_market_entry(
@@ -113,200 +110,64 @@ def test_write_market_entry_updates_metal_stock(db, db_path):
         metal="Gold",
         stock=30000,
     )
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert (
-        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 30000
-    )
-
-
-def test_write_market_entry_persists_atomically(db, db_path):
-    """Test that write_market_entry uses atomic writes (no .tmp file left behind)."""
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
         station_name="Abraham Lincoln",
         station_type="Coriolis Starport",
         url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
+        metal="Silver",
+        stock=60000,
     )
 
-    # Verify no temp file exists
-    tmp_file = db_path.with_suffix(db_path.suffix + ".tmp")
-    assert not tmp_file.exists()
-    assert db_path.exists()
+    data = load_data(db_path)
+    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"] == {
+        "stock": 30000,
+        "sent_to": {"guild": {"123": True}, "user": {"456": True}},
+    }
+    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Silver"] == {
+        "stock": 60000,
+        "sent_to": {"guild": {}, "user": {}},
+    }
 
 
-def test_write_market_entry_preserves_cooldowns(db, db_path):
-    """Test that write_market_entry preserves existing cooldown data."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
+def test_write_powerplay_entry_never_writes_or_preserves_cooldowns(db_path):
+    legacy_data = {
+        "Sol": {
+            "system_address": "10477373803",
+            "powerplay": {
+                "power": "Old Power",
+                "status": "Fortified",
+                "progress": 30,
+                "commodity_urls": "old",
+                "cooldowns": {"guild": {"1": 123.0}},
+            },
+            "stations": {},
+        }
+    }
+    with open(db_path, "w", encoding="utf-8") as handle:
+        json.dump(legacy_data, handle, indent=2, sort_keys=True)
 
-    # Manually add cooldown
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Update stock
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=30000,
-    )
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Cooldown should still exist
-    assert "cooldowns" in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]
-    assert (
-        "guild"
-        in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["cooldowns"]
-    )
-
-
-# ============================================================================
-# write_powerplay_entry() tests
-# ============================================================================
-
-
-def test_write_powerplay_entry_creates_powerplay_data(db, db_path):
-    """Test that write_powerplay_entry creates/updates powerplay data for a system."""
-    db.write_powerplay_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        power="Zachary Hudson",
-        status="Acquisition",
-        progress=75,
-    )
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert "Sol" in data
-    assert data["Sol"]["system_address"] == "10477373803"
-    assert data["Sol"]["powerplay"]["power"] == "Zachary Hudson"
-    assert data["Sol"]["powerplay"]["status"] == "Acquisition"
-    assert data["Sol"]["powerplay"]["progress"] == 75
-
-
-def test_write_powerplay_entry_preserves_station_data(db, db_path):
-    """Test that write_powerplay_entry preserves existing station/metal data."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.write_powerplay_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        power="Zachary Hudson",
-        status="Acquisition",
-        progress=75,
-    )
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Station data should still exist
-    assert "Abraham Lincoln" in data["Sol"]["stations"]
-    assert (
-        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
-    )
-
-
-def test_write_powerplay_entry_updates_existing_powerplay(db, db_path):
-    """Test that write_powerplay_entry updates existing powerplay data."""
-    db.write_powerplay_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        power="Zachary Hudson",
-        status="Acquisition",
-        progress=75,
-    )
-
-    db.write_powerplay_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        power="Zachary Hudson",
-        status="Acquisition",
-        progress=90,
-    )
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert data["Sol"]["powerplay"]["progress"] == 90
-
-
-def test_powerplay_cooldown_tracking(db, db_path):
-    """Test that powerplay cooldowns are stored and checked correctly."""
-    db.write_powerplay_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        power="Zachary Hudson",
-        status="Fortified",
-        progress=75,
-    )
-
-    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is True
-
-    db.mark_powerplay_sent("Sol", "guild", "123")
-
-    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is False
-
-    assert db.check_powerplay_cooldown("Sol", "guild", "456", 3600) is True
-
-
-def test_powerplay_cooldown_persists_across_updates(db, db_path):
-    """Test that cooldowns survive write_powerplay_entry calls (CRITICAL)."""
-    db.write_powerplay_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        power="Zachary Hudson",
-        status="Fortified",
-        progress=75,
-    )
-
-    db.mark_powerplay_sent("Sol", "guild", "123")
-
-    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is False
-
+    db = MarketDatabase(db_path)
     db.write_powerplay_entry(
         system_name="Sol",
         system_address="10477373803",
         power="Zachary Hudson",
         status="Stronghold",
         progress=80,
+        commodity_urls="links",
     )
 
-    assert db.check_powerplay_cooldown("Sol", "guild", "123", 3600) is False
+    data = load_data(db_path)
+    assert data["Sol"]["powerplay"] == {
+        "power": "Zachary Hudson",
+        "status": "Stronghold",
+        "progress": 80,
+        "commodity_urls": "links",
+    }
 
 
-# ============================================================================
-# read_all_entries() tests
-# ============================================================================
-
-
-def test_read_all_entries_returns_all_systems(db):
-    """Test that read_all_entries returns all systems with their data."""
+def test_mark_market_alerts_sent_batch_and_has_market_alert_been_sent(db, db_path):
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
@@ -317,6 +178,69 @@ def test_read_all_entries_returns_all_systems(db):
         stock=25000,
     )
 
+    db.mark_market_alerts_sent_batch(
+        [
+            ("Sol", "Abraham Lincoln", "Gold", "guild", "123"),
+            ("Sol", "Abraham Lincoln", "Gold", "guild", "789"),
+            ("Sol", "Abraham Lincoln", "Gold", "user", "456"),
+        ]
+    )
+
+    assert (
+        db.has_market_alert_been_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123")
+        is True
+    )
+    assert (
+        db.has_market_alert_been_sent("Sol", "Abraham Lincoln", "Gold", "guild", "789")
+        is True
+    )
+    assert (
+        db.has_market_alert_been_sent("Sol", "Abraham Lincoln", "Gold", "user", "456")
+        is True
+    )
+    assert (
+        db.has_market_alert_been_sent("Sol", "Abraham Lincoln", "Gold", "guild", "456")
+        is False
+    )
+    assert (
+        db.has_market_alert_been_sent("Sol", "Abraham Lincoln", "Gold", "user", "123")
+        is False
+    )
+    assert (
+        db.has_market_alert_been_sent("Sol", "Abraham Lincoln", "Gold", "guild", "999")
+        is False
+    )
+
+    reloaded = MarketDatabase(db_path)
+    assert (
+        reloaded.has_market_alert_been_sent(
+            "Sol", "Abraham Lincoln", "Gold", "guild", "123"
+        )
+        is True
+    )
+
+
+def test_prune_stale_removes_only_absent_opportunities_and_cascades_empty_containers(
+    db, db_path
+):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Silver",
+        stock=60000,
+    )
     db.write_market_entry(
         system_name="Alpha Centauri",
         system_address="123456789",
@@ -324,28 +248,31 @@ def test_read_all_entries_returns_all_systems(db):
         station_type="Outpost",
         url="https://inara.cz/station/789",
         metal="Palladium",
-        stock=10000,
+        stock=16000,
+    )
+    db.mark_market_alerts_sent_batch(
+        [
+            ("Sol", "Abraham Lincoln", "Gold", "guild", "123"),
+            ("Sol", "Abraham Lincoln", "Silver", "user", "456"),
+            ("Alpha Centauri", "Hutton Orbital", "Palladium", "guild", "999"),
+        ]
     )
 
-    entries = db.read_all_entries()
+    db.prune_stale({("Sol", "Abraham Lincoln", "Silver")})
 
-    assert len(entries) == 2
-    assert "Sol" in entries
-    assert "Alpha Centauri" in entries
-    assert (
-        entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"]
-        == 25000
-    )
-
-
-def test_read_all_entries_returns_empty_dict_if_no_data(db):
-    """Test that read_all_entries returns empty dict if no data exists."""
-    entries = db.read_all_entries()
-    assert entries == {}
+    data = load_data(db_path)
+    metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+    assert "Gold" not in metals
+    assert metals["Silver"] == {
+        "stock": 60000,
+        "sent_to": {"guild": {}, "user": {"456": True}},
+    }
+    assert "Alpha Centauri" not in data
 
 
-def test_read_all_entries_includes_powerplay_and_cooldowns(db):
-    """Test that read_all_entries includes powerplay, stations, metals, and cooldowns."""
+def test_prune_stale_removes_powerplay_for_absent_systems_but_preserves_stations(
+    db, db_path
+):
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
@@ -355,33 +282,27 @@ def test_read_all_entries_includes_powerplay_and_cooldowns(db):
         metal="Gold",
         stock=25000,
     )
-
     db.write_powerplay_entry(
         system_name="Sol",
         system_address="10477373803",
         power="Zachary Hudson",
-        status="Acquisition",
+        status="Fortified",
         progress=75,
+        commodity_urls="links",
     )
 
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
+    db.prune_stale(
+        {("Sol", "Abraham Lincoln", "Gold")}, current_powerplay_systems=set()
+    )
 
-    entries = db.read_all_entries()
-
-    assert "powerplay" in entries["Sol"]
-    assert entries["Sol"]["powerplay"]["power"] == "Zachary Hudson"
+    data = load_data(db_path)
+    assert "powerplay" not in data["Sol"]
     assert (
-        "cooldowns" in entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]
+        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
     )
 
 
-# ============================================================================
-# check_cooldown() tests
-# ============================================================================
-
-
-def test_check_cooldown_returns_true_if_no_cooldown_exists(db):
-    """Test that check_cooldown returns True if no cooldown exists for the key."""
+def test_end_scan_uses_opportunity_and_powerplay_sets(db, db_path):
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
@@ -391,270 +312,6 @@ def test_check_cooldown_returns_true_if_no_cooldown_exists(db):
         metal="Gold",
         stock=25000,
     )
-
-    can_send = db.check_cooldown(
-        system_name="Sol",
-        station_name="Abraham Lincoln",
-        metal="Gold",
-        recipient_type="guild",
-        recipient_id="123456",
-        cooldown_seconds=48 * 3600,
-    )
-
-    assert can_send is True
-
-
-def test_check_cooldown_returns_false_if_within_cooldown_period(db):
-    """Test that check_cooldown returns False if within cooldown period."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    can_send = db.check_cooldown(
-        system_name="Sol",
-        station_name="Abraham Lincoln",
-        metal="Gold",
-        recipient_type="guild",
-        recipient_id="123456",
-        cooldown_seconds=48 * 3600,
-    )
-
-    assert can_send is False
-
-
-def test_check_cooldown_returns_true_if_cooldown_expired(db):
-    """Test that check_cooldown returns True if cooldown has expired."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Wait for cooldown to expire (use very short cooldown for testing)
-    time.sleep(0.1)
-
-    can_send = db.check_cooldown(
-        system_name="Sol",
-        station_name="Abraham Lincoln",
-        metal="Gold",
-        recipient_type="guild",
-        recipient_id="123456",
-        cooldown_seconds=0.05,  # 50ms cooldown
-    )
-
-    assert can_send is True
-
-
-def test_check_cooldown_different_recipient_types_dont_interfere(db):
-    """Test that different recipient_type values don't interfere with each other."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    # Mark sent for guild
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Check cooldown for user - should be True (no cooldown for user)
-    can_send = db.check_cooldown(
-        system_name="Sol",
-        station_name="Abraham Lincoln",
-        metal="Gold",
-        recipient_type="user",
-        recipient_id="123456",
-        cooldown_seconds=48 * 3600,
-    )
-
-    assert can_send is True
-
-
-def test_check_cooldown_different_recipient_ids_dont_interfere(db):
-    """Test that different recipient_id values don't interfere with each other."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    # Mark sent for guild 123456
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Check cooldown for guild 789012 - should be True (different guild)
-    can_send = db.check_cooldown(
-        system_name="Sol",
-        station_name="Abraham Lincoln",
-        metal="Gold",
-        recipient_type="guild",
-        recipient_id="789012",
-        cooldown_seconds=48 * 3600,
-    )
-
-    assert can_send is True
-
-
-def test_check_cooldown_per_station_metal_combination(db):
-    """Test that cooldown is per (station, metal) combination."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Palladium",
-        stock=15000,
-    )
-
-    # Mark sent for Gold
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Check cooldown for Palladium - should be True (different metal)
-    can_send = db.check_cooldown(
-        system_name="Sol",
-        station_name="Abraham Lincoln",
-        metal="Palladium",
-        recipient_type="guild",
-        recipient_id="123456",
-        cooldown_seconds=48 * 3600,
-    )
-
-    assert can_send is True
-
-
-# ============================================================================
-# mark_sent() tests
-# ============================================================================
-
-
-def test_mark_sent_sets_cooldown_timestamp(db, db_path):
-    """Test that mark_sent sets cooldown timestamp for the key."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    before = time.time()
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-    after = time.time()
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    cooldown_ts = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"][
-        "cooldowns"
-    ]["guild"]["123456"]
-    assert before <= cooldown_ts <= after
-
-
-def test_mark_sent_persists_to_file(db, db_path):
-    """Test that mark_sent persists cooldown to file."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Create new instance to verify persistence
-    db2 = MarketDatabase(db_path)
-    can_send = db2.check_cooldown(
-        system_name="Sol",
-        station_name="Abraham Lincoln",
-        metal="Gold",
-        recipient_type="guild",
-        recipient_id="123456",
-        cooldown_seconds=48 * 3600,
-    )
-
-    assert can_send is False
-
-
-def test_mark_sent_overwrites_existing_cooldown(db, db_path):
-    """Test that mark_sent overwrites existing cooldown timestamp."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-    time.sleep(0.01)
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Should only have one cooldown entry
-    cooldowns = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"][
-        "cooldowns"
-    ]["guild"]
-    assert len(cooldowns) == 1
-    assert "123456" in cooldowns
-
-
-# ============================================================================
-# prune_stale() tests
-# ============================================================================
-
-
-def test_prune_stale_removes_systems_not_in_current_set(db, db_path):
-    """Test that prune_stale removes systems not in current_systems set."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
     db.write_market_entry(
         system_name="Alpha Centauri",
         system_address="123456789",
@@ -662,236 +319,76 @@ def test_prune_stale_removes_systems_not_in_current_set(db, db_path):
         station_type="Outpost",
         url="https://inara.cz/station/789",
         metal="Palladium",
-        stock=10000,
+        stock=16000,
     )
-
-    # Prune - only keep Sol
-    db.prune_stale({"Sol"})
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert "Sol" in data
-    assert "Alpha Centauri" not in data
-
-
-def test_prune_stale_keeps_systems_in_current_set(db, db_path):
-    """Test that prune_stale keeps systems in current_systems set."""
-    db.write_market_entry(
+    db.write_powerplay_entry(
         system_name="Sol",
         system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
+        power="Zachary Hudson",
+        status="Fortified",
+        progress=75,
+        commodity_urls="links",
     )
-
-    db.prune_stale({"Sol"})
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert "Sol" in data
-
-
-def test_prune_stale_does_not_prune_if_cooldowns_active(db, db_path):
-    """Test that prune_stale does NOT prune if any cooldowns still active."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    # Mark sent (creates active cooldown)
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Try to prune (should not remove because cooldown is active)
-    db.prune_stale(set())
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Sol should still exist because it has active cooldown
-    assert "Sol" in data
-
-
-def test_prune_stale_does_prune_if_all_cooldowns_expired(db, db_path):
-    """Test that prune_stale DOES prune if all cooldowns expired AND system not in current_systems."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    # Mark sent with very short cooldown
-    db.mark_sent("Sol", "Abraham Lincoln", "Gold", "guild", "123456")
-
-    # Wait for cooldown to expire
-    time.sleep(0.1)
-
-    # Prune (cooldown expired, system not in current set)
-    # Note: prune_stale should check if cooldowns are expired based on some TTL
-    # For this test, we assume prune_stale takes a cooldown_seconds parameter
-    # or uses a default TTL to determine if cooldowns are expired
-    db.prune_stale(set())
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Sol should be removed (cooldown expired and not in current_systems)
-    # This test may need adjustment based on actual prune_stale implementation
-    # For now, we'll assume it checks cooldowns against a TTL
-    assert "Sol" not in data
-
-
-def test_prune_stale_atomic_write_persists_changes(db, db_path):
-    """Test that prune_stale uses atomic write to persist changes."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.prune_stale(set())
-
-    # Verify no temp file exists
-    tmp_file = db_path.with_suffix(db_path.suffix + ".tmp")
-    assert not tmp_file.exists()
-
-
-# ============================================================================
-# begin_scan() / end_scan() tests
-# ============================================================================
-
-
-def test_begin_scan_marks_scan_started(db):
-    """Test that begin_scan marks scan as started."""
-    db.begin_scan()
-    # This test verifies that begin_scan() can be called without error
-    # Actual state tracking will be verified in end_scan tests
-
-
-def test_end_scan_calls_prune_stale_with_scanned_systems(db, db_path):
-    """Test that end_scan calls prune_stale with scanned systems."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.write_market_entry(
+    db.write_powerplay_entry(
         system_name="Alpha Centauri",
         system_address="123456789",
-        station_name="Hutton Orbital",
-        station_type="Outpost",
-        url="https://inara.cz/station/789",
-        metal="Palladium",
-        stock=10000,
+        power="Aisling Duval",
+        status="Stronghold",
+        progress=55,
+        commodity_urls="links",
     )
 
     db.begin_scan()
-    db.end_scan({"Sol"})
+    db.end_scan({("Sol", "Abraham Lincoln", "Gold")}, {"Sol"})
 
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Alpha Centauri should be pruned
+    data = load_data(db_path)
     assert "Sol" in data
     assert "Alpha Centauri" not in data
+    assert data["Sol"]["powerplay"]["power"] == "Zachary Hudson"
 
 
-def test_end_scan_only_prunes_verified_absent_stations(db, db_path):
-    """Test that end_scan only prunes stations verified absent from last complete scan."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    db.begin_scan()
-    # Scan completes without seeing Sol
-    db.end_scan(set())
-
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Sol should be pruned (verified absent from complete scan)
-    assert "Sol" not in data
-
-
-# ============================================================================
-# Thread-safety tests
-# ============================================================================
-
-
-def test_concurrent_writes_dont_corrupt_file(db, db_path):
-    """Test that concurrent writes don't corrupt the database file."""
+def test_concurrent_writes_and_batch_marks_do_not_corrupt_file(db, db_path):
     errors = []
 
-    def write_entry(system_name, station_name, metal):
+    def write_many(system_name, station_name, metal):
         try:
-            for i in range(10):
+            for index in range(10):
                 db.write_market_entry(
                     system_name=system_name,
-                    system_address=f"addr_{system_name}",
+                    system_address=f"addr-{system_name}",
                     station_name=station_name,
                     station_type="Starport",
                     url=f"https://inara.cz/station/{station_name}",
                     metal=metal,
-                    stock=1000 + i,
+                    stock=1000 + index,
                 )
-        except Exception as e:
-            errors.append(e)
+                db.mark_market_alerts_sent_batch(
+                    [(system_name, station_name, metal, "guild", str(index))]
+                )
+        except Exception as exc:
+            errors.append(exc)
 
     threads = [
-        threading.Thread(target=write_entry, args=("Sol", "Station1", "Gold")),
-        threading.Thread(target=write_entry, args=("Sol", "Station2", "Palladium")),
-        threading.Thread(
-            target=write_entry, args=("Alpha Centauri", "Station3", "Gold")
-        ),
+        threading.Thread(target=write_many, args=("Sol", "Station1", "Gold")),
+        threading.Thread(target=write_many, args=("Sol", "Station2", "Silver")),
+        threading.Thread(target=write_many, args=("Achenar", "Station3", "Palladium")),
     ]
 
-    for t in threads:
-        t.start()
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
 
-    for t in threads:
-        t.join()
-
-    # No errors should occur
-    assert len(errors) == 0
-
-    # File should be valid JSON
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # All systems should exist
+    assert errors == []
+    data = load_data(db_path)
     assert "Sol" in data
-    assert "Alpha Centauri" in data
+    assert "Achenar" in data
+    assert data["Sol"]["stations"]["Station1"]["metals"]["Gold"]["sent_to"]["guild"]
 
 
-def test_concurrent_reads_see_consistent_data(db):
-    """Test that concurrent reads see consistent data."""
+def test_atomic_write_does_not_replace_existing_file_on_save_failure(
+    db, db_path, monkeypatch
+):
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
@@ -901,107 +398,14 @@ def test_concurrent_reads_see_consistent_data(db):
         metal="Gold",
         stock=25000,
     )
-
-    results = []
-    errors = []
-
-    def read_entries():
-        try:
-            for _ in range(10):
-                entries = db.read_all_entries()
-                results.append(entries)
-        except Exception as e:
-            errors.append(e)
-
-    threads = [threading.Thread(target=read_entries) for _ in range(5)]
-
-    for t in threads:
-        t.start()
-
-    for t in threads:
-        t.join()
-
-    # No errors should occur
-    assert len(errors) == 0
-
-    # All reads should return consistent data
-    for entries in results:
-        assert "Sol" in entries
-        assert (
-            entries["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"]
-            == 25000
-        )
-
-
-def test_concurrent_write_market_entry_calls(db, db_path):
-    """Test multiple threads calling write_market_entry concurrently."""
-    errors = []
-
-    def write_many():
-        try:
-            for i in range(20):
-                db.write_market_entry(
-                    system_name=f"System{i % 3}",
-                    system_address=f"addr{i % 3}",
-                    station_name=f"Station{i % 5}",
-                    station_type="Starport",
-                    url=f"https://inara.cz/station/{i}",
-                    metal="Gold" if i % 2 == 0 else "Palladium",
-                    stock=1000 + i,
-                )
-        except Exception as e:
-            errors.append(e)
-
-    threads = [threading.Thread(target=write_many) for _ in range(10)]
-
-    for t in threads:
-        t.start()
-
-    for t in threads:
-        t.join()
-
-    # No errors should occur
-    assert len(errors) == 0
-
-    # File should be valid JSON
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Should have 3 systems (System0, System1, System2)
-    assert len(data) == 3
-
-
-# ============================================================================
-# Atomic write tests
-# ============================================================================
-
-
-def test_no_partial_writes_on_crash(db, db_path, monkeypatch):
-    """Test that no partial writes occur on simulated crash."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    # Read original data
-    with open(db_path, "r", encoding="utf-8") as f:
-        original_data = f.read()
-
-    # Simulate crash during write by making json.dump raise an exception
+    original = db_path.read_text(encoding="utf-8")
     original_dump = json.dump
 
     def crash_dump(*args, **kwargs):
         raise RuntimeError("Simulated crash")
 
     monkeypatch.setattr(json, "dump", crash_dump)
-
-    # Try to write (should fail)
-    try:
+    with pytest.raises(RuntimeError):
         db.write_market_entry(
             system_name="Sol",
             system_address="10477373803",
@@ -1011,40 +415,7 @@ def test_no_partial_writes_on_crash(db, db_path, monkeypatch):
             metal="Gold",
             stock=30000,
         )
-    except RuntimeError:
-        pass
-
-    # Restore original json.dump
     monkeypatch.setattr(json, "dump", original_dump)
 
-    # Original file should be unchanged
-    with open(db_path, "r", encoding="utf-8") as f:
-        current_data = f.read()
-
-    assert current_data == original_data
-
-
-def test_temp_file_pattern_works_correctly(db, db_path):
-    """Test that temp file pattern (write to .tmp, then rename) works correctly."""
-    db.write_market_entry(
-        system_name="Sol",
-        system_address="10477373803",
-        station_name="Abraham Lincoln",
-        station_type="Coriolis Starport",
-        url="https://inara.cz/station/123",
-        metal="Gold",
-        stock=25000,
-    )
-
-    # Verify final file exists and temp file doesn't
-    assert db_path.exists()
-    tmp_file = db_path.with_suffix(db_path.suffix + ".tmp")
-    assert not tmp_file.exists()
-
-    # Verify data is correct
-    with open(db_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    assert (
-        data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["stock"] == 25000
-    )
+    assert db_path.read_text(encoding="utf-8") == original
+    assert not db_path.with_suffix(db_path.suffix + ".tmp").exists()
