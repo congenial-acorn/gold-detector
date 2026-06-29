@@ -9,6 +9,7 @@ import discord
 from discord import AllowedMentions
 
 from .config import Settings
+from .powerplay import get_powerplay_status
 from .services import (
     GuildPreferencesService,
     OptOutService,
@@ -184,28 +185,6 @@ class DiscordMessenger:
                 messages.append("\n".join(lines))
 
             return "\n\n".join(messages)
-        elif powerplay_lines:
-            # Only powerplay
-            messages = []
-            for line in powerplay_lines:
-                system_name = line["system_name"]
-                power = line["power"]
-                status = line["status"]
-
-                pp_entry = all_data.get(system_name, {}).get("powerplay", {})
-                commodity_urls = pp_entry.get("commodity_urls", "")
-
-                powerplay_info = f"{system_name} is a {power} {status} system."
-
-                if commodity_urls:
-                    if status == "Fortified":
-                        powerplay_info += f"\nYou can earn merits by selling for large profit in these acquisition systems: {commodity_urls}"
-                    elif status == "Stronghold":
-                        powerplay_info += f"\nYou can earn merits by selling for large profit: {commodity_urls}"
-
-                messages.append(powerplay_info)
-
-            return "\n".join(messages)
         else:
             return ""
 
@@ -322,6 +301,97 @@ class DiscordMessenger:
 
         # Read all entries from database
         all_data = market_db.read_all_entries()
+        powerplay_refresh_cache: dict[str, Any | None] = {}
+
+        async def _refresh_powerplay_snapshot_for_recipient(
+            recipient_market_lines: list[dict[str, Any]],
+            current_data: dict[str, Any],
+        ) -> dict[str, Any]:
+            if not recipient_market_lines:
+                return current_data
+
+            systems_to_commodities: dict[str, set[str]] = {}
+            system_addresses: dict[str, str] = {}
+            for line in recipient_market_lines:
+                system_name = line["system_name"]
+                systems_to_commodities.setdefault(system_name, set()).add(line["metal"])
+                system_addresses[system_name] = line["system_address"]
+
+            uncached_systems = [
+                system_name
+                for system_name in systems_to_commodities
+                if system_name not in powerplay_refresh_cache
+            ]
+            if not uncached_systems:
+                return current_data
+
+            systems_to_fetch = []
+            for system_name in uncached_systems:
+                system_address = system_addresses.get(system_name, "")
+                if not system_address:
+                    powerplay_refresh_cache[system_name] = (
+                        current_data.get(system_name, {}).get("powerplay") or None
+                    )
+                    continue
+
+                systems_to_fetch.append(
+                    [system_address] + sorted(systems_to_commodities[system_name])
+                )
+
+            if not systems_to_fetch:
+                return current_data
+
+            refreshed_systems = await asyncio.to_thread(
+                get_powerplay_status,
+                systems_to_fetch,
+                market_db,
+            )
+            current_data = market_db.read_all_entries()
+
+            for refreshed_system_name in refreshed_systems:
+                powerplay_refresh_cache[refreshed_system_name] = (
+                    current_data.get(refreshed_system_name, {}).get("powerplay") or None
+                )
+
+            for system_name in uncached_systems:
+                powerplay_refresh_cache[system_name] = (
+                    current_data.get(system_name, {}).get("powerplay") or None
+                )
+
+            return current_data
+
+        def _build_powerplay_lines_for_recipient(
+            recipient_market_lines: list[dict[str, Any]],
+            prefs: dict[str, Any],
+            current_data: dict[str, Any],
+        ) -> list[dict[str, Any]]:
+            if not recipient_market_lines:
+                return []
+
+            market_systems = {line["system_name"] for line in recipient_market_lines}
+            powerplay_lines: list[dict[str, Any]] = []
+            for system_name in sorted(market_systems):
+                powerplay = current_data.get(system_name, {}).get("powerplay")
+                if not powerplay:
+                    continue
+
+                power = powerplay.get("power")
+                status = powerplay.get("status")
+                if not power or status not in ("Fortified", "Stronghold"):
+                    continue
+
+                if not self._passes_powerplay_filter(power, prefs):
+                    continue
+
+                powerplay_lines.append(
+                    {
+                        "system_name": system_name,
+                        "power": power,
+                        "status": status,
+                    }
+                )
+
+            return powerplay_lines
 
         self.logger.info(
             "[dispatch_from_database] Starting - %d systems in database, %d guilds, %d subscribers",
@@ -348,7 +418,6 @@ class DiscordMessenger:
             prefs = self.guild_prefs.get_preferences("guild", guild.id)
 
             market_lines = []
-            powerplay_lines = []
             sent_entries = []
             candidate_count = 0
 
@@ -406,37 +475,26 @@ class DiscordMessenger:
                                     )
                                 )
 
-                # Process powerplay
-                if "powerplay" in system_data and system_data["powerplay"]:
-                    powerplay = system_data["powerplay"]
-                    power = powerplay.get("power")
-                    status = powerplay.get("status")
-
-                    if power and status and status in ("Fortified", "Stronghold"):
-                        candidate_count += 1
-
-                        if self._passes_powerplay_filter(power, prefs):
-                            powerplay_lines.append(
-                                {
-                                    "system_name": system_name,
-                                    "power": power,
-                                    "status": status,
-                                }
-                            )
-
             self.logger.debug(
                 "[dispatch_from_database] Guild %s: %d candidate entries, %d passed filters",
                 guild.name,
                 candidate_count,
-                len(market_lines) + len(powerplay_lines),
+                len(market_lines),
             )
 
-            if not market_lines and not powerplay_lines:
+            if not market_lines:
                 self.logger.debug(
                     "[dispatch_from_database] Guild %s: no entries to send (0 passed filters)",
                     guild.name,
                 )
                 continue
+
+            all_data = await _refresh_powerplay_snapshot_for_recipient(
+                market_lines, all_data
+            )
+            powerplay_lines = _build_powerplay_lines_for_recipient(
+                market_lines, prefs, all_data
+            )
 
             # Build message inline
             message = self._build_message(market_lines, powerplay_lines, all_data)
@@ -503,7 +561,6 @@ class DiscordMessenger:
             prefs = self.guild_prefs.get_preferences("user", user_id)
 
             market_lines = []
-            powerplay_lines = []
             sent_entries = []
 
             for system_name, system_data in all_data.items():
@@ -558,24 +615,15 @@ class DiscordMessenger:
                                     )
                                 )
 
-                # Process powerplay
-                if "powerplay" in system_data and system_data["powerplay"]:
-                    powerplay = system_data["powerplay"]
-                    power = powerplay.get("power")
-                    status = powerplay.get("status")
-
-                    if power and status and status in ("Fortified", "Stronghold"):
-                        if self._passes_powerplay_filter(power, prefs):
-                            powerplay_lines.append(
-                                {
-                                    "system_name": system_name,
-                                    "power": power,
-                                    "status": status,
-                                }
-                            )
-
-            if not market_lines and not powerplay_lines:
+            if not market_lines:
                 continue
+
+            all_data = await _refresh_powerplay_snapshot_for_recipient(
+                market_lines, all_data
+            )
+            powerplay_lines = _build_powerplay_lines_for_recipient(
+                market_lines, prefs, all_data
+            )
 
             # Build message inline
             message = self._build_message(market_lines, powerplay_lines, all_data)

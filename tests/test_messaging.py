@@ -64,7 +64,7 @@ def test_dispatch_from_database_reads_entries():
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
             "Sol": {
-                "system_address": "1234",
+                "system_address": "https://inara.cz/elite/starsystem/1234/",
                 "powerplay": {},
                 "stations": {
                     "Abraham Lincoln": {
@@ -120,8 +120,7 @@ def test_dispatch_from_database_reads_entries():
 
         await messenger.dispatch_from_database(mock_db)
 
-        # Verify read_all_entries was called
-        mock_db.read_all_entries.assert_called_once()
+        assert mock_db.read_all_entries.call_count == 2
 
     asyncio.run(_run())
 
@@ -741,32 +740,31 @@ def test_dispatch_from_database_includes_role_mentions():
     asyncio.run(_run())
 
 
-def test_dispatch_from_database_handles_powerplay():
-    """Test that dispatch_from_database filters powerplay entries using filter_entries_for_preferences."""
-    from unittest.mock import Mock, AsyncMock
+def test_dispatch_from_database_skips_standalone_powerplay_for_guilds_and_dms():
+    from unittest.mock import AsyncMock, Mock
     from gold_detector.market_database import MarketDatabase
 
     async def _run():
         loop = asyncio.get_running_loop()
 
-        # Create mock database with powerplay entry
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
             "Sol": {
-                "system_address": "1234",
+                "system_address": "https://inara.cz/elite/starsystem/1234/",
                 "powerplay": {
                     "power": "Zachary Hudson",
                     "status": "Fortified",
-                    "progress": 75,
+                    "progress": "75%",
+                    "commodity_urls": "[Sell gold here](https://inara.cz/test)",
                 },
                 "stations": {},
             }
         }
         mock_db.has_market_alert_been_sent.return_value = False
 
-        # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_client.user = Mock()
+
         mock_guild = Mock()
         mock_guild.id = 123456
         mock_guild.name = "Test Guild"
@@ -784,7 +782,10 @@ def test_dispatch_from_database_handles_powerplay():
         mock_guild.roles = []
         mock_client.guilds = [mock_guild]
 
-        # Create mock services with powerplay preference
+        mock_user = AsyncMock()
+        mock_user.send = AsyncMock()
+        mock_client.fetch_user = AsyncMock(return_value=mock_user)
+
         mock_guild_prefs = Mock()
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
         mock_guild_prefs.effective_channel_id.return_value = None
@@ -797,7 +798,7 @@ def test_dispatch_from_database_handles_powerplay():
         mock_opt_outs = Mock()
         mock_opt_outs.is_opted_out.return_value = False
         mock_subscribers = Mock()
-        mock_subscribers.all.return_value = []
+        mock_subscribers.all.return_value = [987654]
 
         messenger = DiscordMessenger(
             _discord_client(mock_client),
@@ -809,11 +810,294 @@ def test_dispatch_from_database_handles_powerplay():
 
         await messenger.dispatch_from_database(mock_db)
 
-        # Verify powerplay message was sent (Zachary Hudson preference matches)
-        mock_channel.send.assert_called_once()
+        mock_channel.send.assert_not_called()
+        mock_user.send.assert_not_called()
+        mock_db.mark_market_alerts_sent_batch.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_dispatch_from_database_appends_powerplay_to_market_message_when_prefs_match():
+    from unittest.mock import AsyncMock, Mock
+
+    import gold_detector.messaging as messaging_module
+    from gold_detector.market_database import MarketDatabase
+
+    async def _run():
+        loop = asyncio.get_running_loop()
+
+        mock_db = Mock(spec=MarketDatabase)
+        mock_db.read_all_entries.return_value = {
+            "Sol": {
+                "system_address": "https://inara.cz/elite/starsystem/1234/",
+                "powerplay": {
+                    "power": "Zachary Hudson",
+                    "status": "Fortified",
+                    "progress": "75%",
+                    "commodity_urls": "[Sell gold here](https://inara.cz/test)",
+                },
+                "stations": {
+                    "Abraham Lincoln": {
+                        "station_type": "Coriolis Starport",
+                        "url": "https://inara.cz/elite/station/1234/",
+                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
+                    }
+                },
+            }
+        }
+        mock_db.has_market_alert_been_sent.return_value = False
+
+        async def fake_to_thread(func, *args):
+            return func(*args)
+
+        mock_get_powerplay_status = Mock(return_value={"Sol"})
+        original_to_thread = messaging_module.asyncio.to_thread
+        original_get_powerplay_status = messaging_module.get_powerplay_status
+        messaging_module.asyncio.to_thread = fake_to_thread
+        messaging_module.get_powerplay_status = mock_get_powerplay_status
+        try:
+            mock_client = _DummyClient(loop)
+            mock_client.user = Mock()
+            mock_guild = Mock()
+            mock_guild.id = 123456
+            mock_guild.name = "Test Guild"
+            mock_guild.me = Mock()
+            mock_channel = Mock()
+            mock_channel.name = "market-watch"
+            mock_channel.send = AsyncMock()
+            mock_channel.permissions_for = Mock(
+                return_value=Mock(view_channel=True, send_messages=True)
+            )
+            mock_channel.position = 0
+            mock_channel.id = 999
+            mock_guild.text_channels = [mock_channel]
+            mock_guild.get_channel.return_value = None
+            mock_guild.roles = []
+            mock_client.guilds = [mock_guild]
+
+            mock_guild_prefs = Mock()
+            mock_guild_prefs.effective_channel_name.return_value = "market-watch"
+            mock_guild_prefs.effective_channel_id.return_value = None
+            mock_guild_prefs.effective_role_name.return_value = "Market Alert"
+            mock_guild_prefs.effective_role_id.return_value = None
+            mock_guild_prefs.get_preferences.return_value = {
+                "powerplay": ["Zachary Hudson"]
+            }
+            mock_guild_prefs.pings_enabled.return_value = False
+            mock_opt_outs = Mock()
+            mock_opt_outs.is_opted_out.return_value = False
+            mock_subscribers = Mock()
+            mock_subscribers.all.return_value = []
+
+            messenger = DiscordMessenger(
+                _discord_client(mock_client),
+                _settings(),
+                mock_guild_prefs,
+                mock_opt_outs,
+                mock_subscribers,
+            )
+
+            await messenger.dispatch_from_database(mock_db)
+        finally:
+            messaging_module.asyncio.to_thread = original_to_thread
+            messaging_module.get_powerplay_status = original_get_powerplay_status
+
         sent_message = mock_channel.send.call_args[0][0]
-        assert "Zachary Hudson" in sent_message
-        assert "Fortified" in sent_message
+        assert "Hidden markets detected in [Sol]" in sent_message
+        assert "Sol is a Zachary Hudson Fortified system." in sent_message
+        assert "[Sell gold here]" in sent_message
+
+    asyncio.run(_run())
+
+
+def test_dispatch_from_database_keeps_market_message_when_powerplay_pref_fails():
+    from unittest.mock import AsyncMock, Mock
+
+    import gold_detector.messaging as messaging_module
+    from gold_detector.market_database import MarketDatabase
+
+    async def _run():
+        loop = asyncio.get_running_loop()
+
+        mock_db = Mock(spec=MarketDatabase)
+        mock_db.read_all_entries.return_value = {
+            "Sol": {
+                "system_address": "https://inara.cz/elite/starsystem/1234/",
+                "powerplay": {
+                    "power": "Zachary Hudson",
+                    "status": "Fortified",
+                    "progress": "75%",
+                    "commodity_urls": "[Sell gold here](https://inara.cz/test)",
+                },
+                "stations": {
+                    "Abraham Lincoln": {
+                        "station_type": "Coriolis Starport",
+                        "url": "https://inara.cz/elite/station/1234/",
+                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
+                    }
+                },
+            }
+        }
+        mock_db.has_market_alert_been_sent.return_value = False
+
+        async def fake_to_thread(func, *args):
+            return func(*args)
+
+        mock_get_powerplay_status = Mock(return_value={"Sol"})
+        original_to_thread = messaging_module.asyncio.to_thread
+        original_get_powerplay_status = messaging_module.get_powerplay_status
+        messaging_module.asyncio.to_thread = fake_to_thread
+        messaging_module.get_powerplay_status = mock_get_powerplay_status
+        try:
+            mock_client = _DummyClient(loop)
+            mock_client.user = Mock()
+            mock_guild = Mock()
+            mock_guild.id = 123456
+            mock_guild.name = "Test Guild"
+            mock_guild.me = Mock()
+            mock_channel = Mock()
+            mock_channel.name = "market-watch"
+            mock_channel.send = AsyncMock()
+            mock_channel.permissions_for = Mock(
+                return_value=Mock(view_channel=True, send_messages=True)
+            )
+            mock_channel.position = 0
+            mock_channel.id = 999
+            mock_guild.text_channels = [mock_channel]
+            mock_guild.get_channel.return_value = None
+            mock_guild.roles = []
+            mock_client.guilds = [mock_guild]
+
+            mock_guild_prefs = Mock()
+            mock_guild_prefs.effective_channel_name.return_value = "market-watch"
+            mock_guild_prefs.effective_channel_id.return_value = None
+            mock_guild_prefs.effective_role_name.return_value = "Market Alert"
+            mock_guild_prefs.effective_role_id.return_value = None
+            mock_guild_prefs.get_preferences.return_value = {
+                "powerplay": ["Aisling Duval"]
+            }
+            mock_guild_prefs.pings_enabled.return_value = False
+            mock_opt_outs = Mock()
+            mock_opt_outs.is_opted_out.return_value = False
+            mock_subscribers = Mock()
+            mock_subscribers.all.return_value = []
+
+            messenger = DiscordMessenger(
+                _discord_client(mock_client),
+                _settings(),
+                mock_guild_prefs,
+                mock_opt_outs,
+                mock_subscribers,
+            )
+
+            await messenger.dispatch_from_database(mock_db)
+        finally:
+            messaging_module.asyncio.to_thread = original_to_thread
+            messaging_module.get_powerplay_status = original_get_powerplay_status
+
+        sent_message = mock_channel.send.call_args[0][0]
+        assert "Hidden markets detected in [Sol]" in sent_message
+        assert "Gold stock: 25,000" in sent_message
+        assert "Zachary Hudson" not in sent_message
+        assert "You can earn merits" not in sent_message
+
+    asyncio.run(_run())
+
+
+def test_dispatch_from_database_refreshes_powerplay_via_asyncio_to_thread_once_per_dispatch():
+    from unittest.mock import AsyncMock, Mock
+
+    import gold_detector.messaging as messaging_module
+    from gold_detector.market_database import MarketDatabase
+
+    async def _run():
+        loop = asyncio.get_running_loop()
+
+        mock_db = Mock(spec=MarketDatabase)
+        mock_db.read_all_entries.return_value = {
+            "Sol": {
+                "system_address": "https://inara.cz/elite/starsystem/1234/",
+                "powerplay": {},
+                "stations": {
+                    "Abraham Lincoln": {
+                        "station_type": "Coriolis Starport",
+                        "url": "https://inara.cz/elite/station/1234/",
+                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
+                    }
+                },
+            }
+        }
+        mock_db.has_market_alert_been_sent.return_value = False
+
+        to_thread_calls = []
+        mock_get_powerplay_status = Mock(return_value=set())
+
+        async def fake_to_thread(func, *args):
+            to_thread_calls.append((func, args))
+            return func(*args)
+
+        original_to_thread = messaging_module.asyncio.to_thread
+        original_get_powerplay_status = messaging_module.get_powerplay_status
+        messaging_module.asyncio.to_thread = fake_to_thread
+        messaging_module.get_powerplay_status = mock_get_powerplay_status
+        try:
+            mock_client = _DummyClient(loop)
+            mock_client.user = Mock()
+
+            guilds = []
+            for guild_id in (111111, 222222):
+                mock_guild = Mock()
+                mock_guild.id = guild_id
+                mock_guild.name = f"Guild {guild_id}"
+                mock_guild.me = Mock()
+                mock_channel = Mock()
+                mock_channel.name = "market-watch"
+                mock_channel.send = AsyncMock()
+                mock_channel.permissions_for = Mock(
+                    return_value=Mock(view_channel=True, send_messages=True)
+                )
+                mock_channel.position = 0
+                mock_channel.id = guild_id
+                mock_guild.text_channels = [mock_channel]
+                mock_guild.get_channel.return_value = None
+                mock_guild.roles = []
+                guilds.append(mock_guild)
+            mock_client.guilds = guilds
+
+            mock_user = AsyncMock()
+            mock_user.send = AsyncMock()
+            mock_client.fetch_user = AsyncMock(return_value=mock_user)
+
+            mock_guild_prefs = Mock()
+            mock_guild_prefs.effective_channel_name.return_value = "market-watch"
+            mock_guild_prefs.effective_channel_id.return_value = None
+            mock_guild_prefs.effective_role_name.return_value = "Market Alert"
+            mock_guild_prefs.effective_role_id.return_value = None
+            mock_guild_prefs.get_preferences.return_value = {}
+            mock_guild_prefs.pings_enabled.return_value = False
+            mock_opt_outs = Mock()
+            mock_opt_outs.is_opted_out.return_value = False
+            mock_subscribers = Mock()
+            mock_subscribers.all.return_value = [987654]
+
+            messenger = DiscordMessenger(
+                _discord_client(mock_client),
+                _settings(),
+                mock_guild_prefs,
+                mock_opt_outs,
+                mock_subscribers,
+            )
+
+            await messenger.dispatch_from_database(mock_db)
+        finally:
+            messaging_module.asyncio.to_thread = original_to_thread
+            messaging_module.get_powerplay_status = original_get_powerplay_status
+
+        assert len(to_thread_calls) == 1
+        called_func, called_args = to_thread_calls[0]
+        assert called_func is mock_get_powerplay_status
+        assert called_args[0] == [["https://inara.cz/elite/starsystem/1234/", "Gold"]]
+        assert called_args[1] is mock_db
 
     asyncio.run(_run())
 
@@ -1502,8 +1786,7 @@ def test_filter_entries_all_filters_must_pass():
     assert "Gold" in [m[0] for m in filtered[0]["metals"]]
 
 
-def test_powerplay_message_with_commodity_urls_fortified():
-    """Test that powerplay message includes commodity URLs for Fortified systems."""
+def test_build_message_does_not_emit_standalone_powerplay_message():
     from unittest.mock import Mock
 
     mock_client = Mock()
@@ -1533,15 +1816,10 @@ def test_powerplay_message_with_commodity_urls_fortified():
     }
 
     message = messenger._build_message([], powerplay_lines, all_data)
-
-    # Verify message content
-    assert "You can earn merits" in message
-    assert "[Sell gold here]" in message
-    assert "acquisition systems" in message
+    assert message == ""
 
 
-def test_powerplay_message_with_commodity_urls_stronghold():
-    """Test that powerplay message includes commodity URLs for Stronghold systems."""
+def test_build_message_appends_powerplay_to_market_message():
     from unittest.mock import Mock
 
     mock_client = Mock()
@@ -1555,10 +1833,20 @@ def test_powerplay_message_with_commodity_urls_stronghold():
         subscribers=Mock(all=lambda: []),
     )
 
+    market_lines = [
+        {
+            "system_name": "TestSystem",
+            "system_address": "https://inara.cz/elite/starsystem/1234/",
+            "station_name": "Jameson Memorial",
+            "station_type": "Coriolis Starport",
+            "url": "https://inara.cz/elite/station/1234/",
+            "metal": "Gold",
+            "stock": 25000,
+        }
+    ]
     powerplay_lines = [
         {"system_name": "TestSystem", "power": "Edmund Mahon", "status": "Stronghold"}
     ]
-
     all_data = {
         "TestSystem": {
             "powerplay": {
@@ -1570,52 +1858,12 @@ def test_powerplay_message_with_commodity_urls_stronghold():
         }
     }
 
-    message = messenger._build_message([], powerplay_lines, all_data)
+    message = messenger._build_message(market_lines, powerplay_lines, all_data)
 
-    # Verify message content
-    assert "You can earn merits" in message
+    assert "Hidden markets detected in [TestSystem]" in message
+    assert "Gold stock: 25,000" in message
+    assert "TestSystem is a Edmund Mahon Stronghold system." in message
     assert "[Sell Palladium here]" in message
-    assert (
-        "acquisition systems" not in message
-    )  # Stronghold should not include "acquisition systems"
-
-
-def test_powerplay_message_without_commodity_urls():
-    """Test that powerplay message works without commodity_urls field (backward compatibility)."""
-    from unittest.mock import Mock
-
-    mock_client = Mock()
-    mock_client.guilds = []
-
-    messenger = DiscordMessenger(
-        _discord_client(mock_client),
-        _settings(),
-        guild_prefs=Mock(get_preferences=lambda x, y: {}),
-        opt_outs=Mock(is_opted_out=lambda x: False),
-        subscribers=Mock(all=lambda: []),
-    )
-
-    powerplay_lines = [
-        {"system_name": "TestSystem", "power": "Zachary Hudson", "status": "Fortified"}
-    ]
-
-    all_data = {
-        "TestSystem": {
-            "powerplay": {
-                "power": "Zachary Hudson",
-                "status": "Fortified",
-                "progress": "75%",
-                # No commodity_urls field
-            }
-        }
-    }
-
-    message = messenger._build_message([], powerplay_lines, all_data)
-
-    # Verify message content - should not have merit text
-    assert "You can earn merits" not in message
-    assert "[Sell" not in message
-    assert "TestSystem" in message  # But should still have basic info
 
 
 def test_build_message_formats_stock_with_commas():
