@@ -311,7 +311,7 @@ class DiscordMessenger:
 
         Per-recipient flow:
         - For each recipient, filter entries at data level
-        - Check cooldown per-entry before including in message
+        - Check sent-state per-entry before including in message
         - Build message inline with filtered entries
         - Integrate ping in message (not separate loop)
         - Mark sent after successful delivery
@@ -347,11 +347,9 @@ class DiscordMessenger:
 
             prefs = self.guild_prefs.get_preferences("guild", guild.id)
 
-            # Collect entries that pass filter + cooldown
             market_lines = []
             powerplay_lines = []
-            cooldown_keys = []
-            powerplay_systems_to_mark = []
+            sent_entries = []
             candidate_count = 0
 
             for system_name, system_data in all_data.items():
@@ -377,14 +375,12 @@ class DiscordMessenger:
                                 if not self._passes_commodity_filter(metal, prefs):
                                     continue
 
-                                # Check cooldown BEFORE including
-                                if not market_db.check_cooldown(
+                                if market_db.has_market_alert_been_sent(
                                     system_name=system_name,
                                     station_name=station_name,
                                     metal=metal,
                                     recipient_type="guild",
                                     recipient_id=str(guild.id),
-                                    cooldown_seconds=self.settings.cooldown_seconds,
                                 ):
                                     continue
 
@@ -400,7 +396,15 @@ class DiscordMessenger:
                                         "stock": stock,
                                     }
                                 )
-                                cooldown_keys.append((system_name, station_name, metal))
+                                sent_entries.append(
+                                    (
+                                        system_name,
+                                        station_name,
+                                        metal,
+                                        "guild",
+                                        str(guild.id),
+                                    )
+                                )
 
                 # Process powerplay
                 if "powerplay" in system_data and system_data["powerplay"]:
@@ -412,20 +416,13 @@ class DiscordMessenger:
                         candidate_count += 1
 
                         if self._passes_powerplay_filter(power, prefs):
-                            if market_db.check_powerplay_cooldown(
-                                system_name=system_name,
-                                recipient_type="guild",
-                                recipient_id=str(guild.id),
-                                cooldown_seconds=self.settings.cooldown_seconds,
-                            ):
-                                powerplay_lines.append(
-                                    {
-                                        "system_name": system_name,
-                                        "power": power,
-                                        "status": status,
-                                    }
-                                )
-                                powerplay_systems_to_mark.append(system_name)
+                            powerplay_lines.append(
+                                {
+                                    "system_name": system_name,
+                                    "power": power,
+                                    "status": status,
+                                }
+                            )
 
             self.logger.debug(
                 "[dispatch_from_database] Guild %s: %d candidate entries, %d passed filters",
@@ -466,22 +463,8 @@ class DiscordMessenger:
                 for chunk in self._message_chunks(message):
                     _ = await channel.send(chunk, allowed_mentions=allowed_mentions)
 
-                # Mark cooldowns AFTER sending message
-                if cooldown_keys:
-                    market_db.mark_sent_batch(
-                        [
-                            (system_name, station_name, metal, "guild", str(guild.id))
-                            for system_name, station_name, metal in cooldown_keys
-                        ]
-                    )
-
-                if powerplay_systems_to_mark:
-                    market_db.mark_powerplay_sent_batch(
-                        [
-                            (system_name, "guild", str(guild.id))
-                            for system_name in powerplay_systems_to_mark
-                        ]
-                    )
+                if sent_entries:
+                    market_db.mark_market_alerts_sent_batch(sent_entries)
 
                 self.logger.info("[%s] Alert sent to #%s", guild.name, channel.name)
             except discord.Forbidden as exc:
@@ -519,11 +502,9 @@ class DiscordMessenger:
 
             prefs = self.guild_prefs.get_preferences("user", user_id)
 
-            # Collect entries that pass filter + cooldown (same flow as guilds)
             market_lines = []
             powerplay_lines = []
-            cooldown_keys = []
-            powerplay_systems_to_mark = []
+            sent_entries = []
 
             for system_name, system_data in all_data.items():
                 system_address = system_data.get("system_address", "")
@@ -546,14 +527,12 @@ class DiscordMessenger:
                                 if not self._passes_commodity_filter(metal, prefs):
                                     continue
 
-                                # Check cooldown BEFORE including
-                                if not market_db.check_cooldown(
+                                if market_db.has_market_alert_been_sent(
                                     system_name=system_name,
                                     station_name=station_name,
                                     metal=metal,
                                     recipient_type="user",
                                     recipient_id=str(user_id),
-                                    cooldown_seconds=self.settings.cooldown_seconds,
                                 ):
                                     continue
 
@@ -569,7 +548,15 @@ class DiscordMessenger:
                                         "stock": stock,
                                     }
                                 )
-                                cooldown_keys.append((system_name, station_name, metal))
+                                sent_entries.append(
+                                    (
+                                        system_name,
+                                        station_name,
+                                        metal,
+                                        "user",
+                                        str(user_id),
+                                    )
+                                )
 
                 # Process powerplay
                 if "powerplay" in system_data and system_data["powerplay"]:
@@ -579,20 +566,13 @@ class DiscordMessenger:
 
                     if power and status and status in ("Fortified", "Stronghold"):
                         if self._passes_powerplay_filter(power, prefs):
-                            if market_db.check_powerplay_cooldown(
-                                system_name=system_name,
-                                recipient_type="user",
-                                recipient_id=str(user_id),
-                                cooldown_seconds=self.settings.cooldown_seconds,
-                            ):
-                                powerplay_lines.append(
-                                    {
-                                        "system_name": system_name,
-                                        "power": power,
-                                        "status": status,
-                                    }
-                                )
-                                powerplay_systems_to_mark.append(system_name)
+                            powerplay_lines.append(
+                                {
+                                    "system_name": system_name,
+                                    "power": power,
+                                    "status": status,
+                                }
+                            )
 
             if not market_lines and not powerplay_lines:
                 continue
@@ -607,22 +587,8 @@ class DiscordMessenger:
                 for chunk in self._message_chunks(message):
                     _ = await user.send(chunk, allowed_mentions=AllowedMentions.none())
 
-                # Mark cooldowns AFTER sending message
-                if cooldown_keys:
-                    market_db.mark_sent_batch(
-                        [
-                            (system_name, station_name, metal, "user", str(user_id))
-                            for system_name, station_name, metal in cooldown_keys
-                        ]
-                    )
-
-                if powerplay_systems_to_mark:
-                    market_db.mark_powerplay_sent_batch(
-                        [
-                            (system_name, "user", str(user_id))
-                            for system_name in powerplay_systems_to_mark
-                        ]
-                    )
+                if sent_entries:
+                    market_db.mark_market_alerts_sent_batch(sent_entries)
 
                 self.logger.debug("[DM] Sent to user %s", user_id)
             except discord.NotFound:

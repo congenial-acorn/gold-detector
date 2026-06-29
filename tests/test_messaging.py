@@ -17,11 +17,13 @@ from gold_detector.messaging import DISCORD_MESSAGE_LIMIT, DiscordMessenger
 class _DummyClient:
     user: Any
     guilds: list[Any]
+    fetch_user: Any
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
         self.user = None
         self.guilds = []
+        self.fetch_user = None
 
 
 def _discord_client(client: object) -> discord.Client:
@@ -77,6 +79,7 @@ def test_dispatch_from_database_reads_entries():
         # Create mock client with guild
         mock_client = _DummyClient(loop)
         mock_client.user = Mock()
+        mock_client.user = Mock()
         mock_guild = Mock()
         mock_guild.id = 123456
         mock_guild.name = "Test Guild"
@@ -105,8 +108,7 @@ def test_dispatch_from_database_reads_entries():
         mock_subscribers = Mock()
         mock_subscribers.all.return_value = []
 
-        # Mock check_cooldown to return True (not on cooldown)
-        mock_db.check_cooldown.return_value = True
+        mock_db.has_market_alert_been_sent.return_value = False
 
         messenger = DiscordMessenger(
             _discord_client(mock_client),
@@ -124,8 +126,7 @@ def test_dispatch_from_database_reads_entries():
     asyncio.run(_run())
 
 
-def test_dispatch_from_database_checks_cooldowns():
-    """Test that dispatch_from_database checks cooldowns BEFORE building message (per-entry)."""
+def test_dispatch_from_database_checks_sent_state():
     from unittest.mock import Mock, AsyncMock
     from gold_detector.market_database import MarketDatabase
 
@@ -151,11 +152,12 @@ def test_dispatch_from_database_checks_cooldowns():
             }
         }
 
-        # Gold passes cooldown, Palladium doesn't
-        def check_cooldown_side_effect(**kwargs):
-            return kwargs["metal"] == "Gold"
+        def has_market_alert_been_sent_side_effect(**kwargs):
+            return kwargs["metal"] == "Palladium"
 
-        mock_db.check_cooldown.side_effect = check_cooldown_side_effect
+        mock_db.has_market_alert_been_sent.side_effect = (
+            has_market_alert_been_sent_side_effect
+        )
 
         # Create mock client with guild
         mock_client = _DummyClient(loop)
@@ -200,20 +202,20 @@ def test_dispatch_from_database_checks_cooldowns():
 
         await messenger.dispatch_from_database(mock_db)
 
-        # Verify check_cooldown was called for EACH metal BEFORE building message
-        # Should be called for both Gold and Palladium
-        assert mock_db.check_cooldown.call_count >= 2
-        # Verify it was called with correct parameters
-        calls = mock_db.check_cooldown.call_args_list
+        assert mock_db.has_market_alert_been_sent.call_count >= 2
+        calls = mock_db.has_market_alert_been_sent.call_args_list
         metals_checked = {call[1]["metal"] for call in calls}
         assert "Gold" in metals_checked
         assert "Palladium" in metals_checked
 
+        sent_message = mock_channel.send.call_args[0][0]
+        assert "Gold" in sent_message
+        assert "Palladium" not in sent_message
+
     asyncio.run(_run())
 
 
-def test_dispatch_from_database_marks_sent():
-    """Test that dispatch_from_database marks cooldown after building message (not after send)."""
+def test_dispatch_from_database_marks_sent_after_successful_send():
     from unittest.mock import Mock, AsyncMock
     from gold_detector.market_database import MarketDatabase
 
@@ -235,15 +237,16 @@ def test_dispatch_from_database_marks_sent():
                 },
             }
         }
-        mock_db.check_cooldown.return_value = True
+        mock_db.has_market_alert_been_sent.return_value = False
 
         # Create mock client with guild
         mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
         mock_guild = Mock()
         mock_guild.id = 123456
         mock_guild.name = "Test Guild"
         mock_guild.me = Mock()
-        mock_channel = AsyncMock()
+        mock_channel = Mock()
         mock_channel.name = "market-watch"
         mock_channel.send = AsyncMock()
         mock_channel.permissions_for.return_value = Mock(
@@ -275,20 +278,304 @@ def test_dispatch_from_database_marks_sent():
             mock_subscribers,
         )
 
-        try:
-            await messenger.dispatch_from_database(mock_db)
-        except (AttributeError, TypeError):
-            pass
+        await messenger.dispatch_from_database(mock_db)
 
-        # Verify mark_sent was called for entries included in message
-        if mock_db.mark_sent.called:
-            call_args = mock_db.mark_sent.call_args
-            assert call_args is not None
-            assert call_args[1]["system_name"] == "Sol"
-            assert call_args[1]["station_name"] == "Abraham Lincoln"
-            assert call_args[1]["metal"] == "Gold"
-            assert "recipient_type" in call_args[1]
-            assert "recipient_id" in call_args[1]
+        mock_db.mark_market_alerts_sent_batch.assert_called_once_with(
+            [("Sol", "Abraham Lincoln", "Gold", "guild", "123456")]
+        )
+
+    asyncio.run(_run())
+
+
+def test_dispatch_sends_same_opportunity_to_guild_and_dm_independently():
+    from unittest.mock import AsyncMock, Mock, call
+    from gold_detector.market_database import MarketDatabase
+
+    async def _run():
+        loop = asyncio.get_running_loop()
+
+        mock_db = Mock(spec=MarketDatabase)
+        mock_db.read_all_entries.return_value = {
+            "Sol": {
+                "system_address": "1234",
+                "powerplay": {},
+                "stations": {
+                    "Abraham Lincoln": {
+                        "station_type": "Coriolis Starport",
+                        "url": "https://inara.cz/station/1234/",
+                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
+                    }
+                },
+            }
+        }
+        mock_db.has_market_alert_been_sent.return_value = False
+
+        mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
+
+        mock_guild = Mock()
+        mock_guild.id = 123456
+        mock_guild.name = "Test Guild"
+        mock_guild.me = Mock()
+        mock_channel = Mock()
+        mock_channel.name = "market-watch"
+        mock_channel.send = AsyncMock()
+        mock_channel.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
+        mock_channel.position = 0
+        mock_channel.id = 999
+        mock_guild.text_channels = [mock_channel]
+        mock_guild.get_channel.return_value = None
+        mock_guild.roles = []
+        mock_client.guilds = [mock_guild]
+
+        mock_user = AsyncMock()
+        mock_user.send = AsyncMock()
+        mock_client.fetch_user = AsyncMock(return_value=mock_user)
+
+        mock_guild_prefs = Mock()
+        mock_guild_prefs.get_preferences.return_value = {}
+        mock_guild_prefs.pings_enabled.return_value = False
+        mock_guild_prefs.effective_channel_name.return_value = "market-watch"
+        mock_guild_prefs.effective_channel_id.return_value = None
+        mock_guild_prefs.effective_role_name.return_value = "Market Alert"
+        mock_guild_prefs.effective_role_id.return_value = None
+        mock_opt_outs = Mock()
+        mock_opt_outs.is_opted_out.return_value = False
+        mock_subscribers = Mock()
+        mock_subscribers.all.return_value = [987654]
+
+        messenger = DiscordMessenger(
+            _discord_client(mock_client),
+            _settings(),
+            mock_guild_prefs,
+            mock_opt_outs,
+            mock_subscribers,
+        )
+
+        await messenger.dispatch_from_database(mock_db)
+
+        mock_channel.send.assert_called_once()
+        mock_user.send.assert_called_once()
+        mock_db.mark_market_alerts_sent_batch.assert_has_calls(
+            [
+                call([("Sol", "Abraham Lincoln", "Gold", "guild", "123456")]),
+                call([("Sol", "Abraham Lincoln", "Gold", "user", "987654")]),
+            ],
+            any_order=False,
+        )
+
+    asyncio.run(_run())
+
+
+def test_dispatch_skips_recipient_with_existing_sent_state():
+    from unittest.mock import AsyncMock, Mock
+    from gold_detector.market_database import MarketDatabase
+
+    async def _run():
+        loop = asyncio.get_running_loop()
+
+        mock_db = Mock(spec=MarketDatabase)
+        mock_db.read_all_entries.return_value = {
+            "Sol": {
+                "system_address": "1234",
+                "powerplay": {},
+                "stations": {
+                    "Abraham Lincoln": {
+                        "station_type": "Coriolis Starport",
+                        "url": "https://inara.cz/station/1234/",
+                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
+                    }
+                },
+            }
+        }
+
+        def has_market_alert_been_sent_side_effect(**kwargs):
+            return kwargs["recipient_type"] == "guild"
+
+        mock_db.has_market_alert_been_sent.side_effect = (
+            has_market_alert_been_sent_side_effect
+        )
+
+        mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
+
+        mock_guild = Mock()
+        mock_guild.id = 123456
+        mock_guild.name = "Test Guild"
+        mock_guild.me = Mock()
+        mock_channel = AsyncMock()
+        mock_channel.name = "market-watch"
+        mock_channel.send = AsyncMock()
+        mock_channel.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
+        mock_channel.position = 0
+        mock_channel.id = 999
+        mock_guild.text_channels = [mock_channel]
+        mock_guild.get_channel.return_value = None
+        mock_guild.roles = []
+        mock_client.guilds = [mock_guild]
+
+        mock_user = AsyncMock()
+        mock_user.send = AsyncMock()
+        mock_client.fetch_user = AsyncMock(return_value=mock_user)
+
+        mock_guild_prefs = Mock()
+        mock_guild_prefs.get_preferences.return_value = {}
+        mock_guild_prefs.pings_enabled.return_value = False
+        mock_guild_prefs.effective_channel_name.return_value = "market-watch"
+        mock_guild_prefs.effective_channel_id.return_value = None
+        mock_guild_prefs.effective_role_name.return_value = "Market Alert"
+        mock_guild_prefs.effective_role_id.return_value = None
+        mock_opt_outs = Mock()
+        mock_opt_outs.is_opted_out.return_value = False
+        mock_subscribers = Mock()
+        mock_subscribers.all.return_value = [987654]
+
+        messenger = DiscordMessenger(
+            _discord_client(mock_client),
+            _settings(),
+            mock_guild_prefs,
+            mock_opt_outs,
+            mock_subscribers,
+        )
+
+        await messenger.dispatch_from_database(mock_db)
+
+        mock_channel.send.assert_not_called()
+        mock_user.send.assert_called_once()
+        mock_db.mark_market_alerts_sent_batch.assert_called_once_with(
+            [("Sol", "Abraham Lincoln", "Gold", "user", "987654")]
+        )
+
+    asyncio.run(_run())
+
+
+def test_dispatch_failed_guild_send_does_not_mark_sent():
+    from unittest.mock import AsyncMock, Mock
+    from gold_detector.market_database import MarketDatabase
+
+    async def _run():
+        loop = asyncio.get_running_loop()
+
+        mock_db = Mock(spec=MarketDatabase)
+        mock_db.read_all_entries.return_value = {
+            "Sol": {
+                "system_address": "1234",
+                "powerplay": {},
+                "stations": {
+                    "Abraham Lincoln": {
+                        "station_type": "Coriolis Starport",
+                        "url": "https://inara.cz/station/1234/",
+                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
+                    }
+                },
+            }
+        }
+        mock_db.has_market_alert_been_sent.return_value = False
+
+        mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
+        mock_guild = Mock()
+        mock_guild.id = 123456
+        mock_guild.name = "Test Guild"
+        mock_guild.me = Mock()
+        mock_channel = Mock()
+        mock_channel.name = "market-watch"
+        response = Mock(status=500, reason="boom")
+        mock_channel.send = AsyncMock(
+            side_effect=discord.HTTPException(response=response, message="boom")
+        )
+        mock_channel.permissions_for.return_value = Mock(
+            view_channel=True, send_messages=True
+        )
+        mock_guild.text_channels = [mock_channel]
+        mock_guild.get_channel.return_value = None
+        mock_guild.roles = []
+        mock_client.guilds = [mock_guild]
+
+        mock_guild_prefs = Mock()
+        mock_guild_prefs.effective_channel_name.return_value = "market-watch"
+        mock_guild_prefs.effective_channel_id.return_value = None
+        mock_guild_prefs.effective_role_name.return_value = "Market Alert"
+        mock_guild_prefs.effective_role_id.return_value = None
+        mock_guild_prefs.get_preferences.return_value = {}
+        mock_guild_prefs.pings_enabled.return_value = False
+        mock_opt_outs = Mock()
+        mock_opt_outs.is_opted_out.return_value = False
+        mock_subscribers = Mock()
+        mock_subscribers.all.return_value = []
+
+        messenger = DiscordMessenger(
+            _discord_client(mock_client),
+            _settings(),
+            mock_guild_prefs,
+            mock_opt_outs,
+            mock_subscribers,
+        )
+
+        await messenger.dispatch_from_database(mock_db)
+
+        mock_db.mark_market_alerts_sent_batch.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_dispatch_failed_dm_send_does_not_mark_sent_and_unsubscribes():
+    from unittest.mock import AsyncMock, Mock
+    from gold_detector.market_database import MarketDatabase
+
+    async def _run():
+        loop = asyncio.get_running_loop()
+
+        mock_db = Mock(spec=MarketDatabase)
+        mock_db.read_all_entries.return_value = {
+            "Sol": {
+                "system_address": "1234",
+                "powerplay": {},
+                "stations": {
+                    "Abraham Lincoln": {
+                        "station_type": "Coriolis Starport",
+                        "url": "https://inara.cz/station/1234/",
+                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
+                    }
+                },
+            }
+        }
+        mock_db.has_market_alert_been_sent.return_value = False
+
+        mock_client = _DummyClient(loop)
+        mock_client.user = Mock()
+        mock_client.guilds = []
+        response = Mock(status=403, reason="Forbidden")
+        forbidden = discord.Forbidden(
+            response=response, message="Cannot send messages to this user"
+        )
+        mock_user = AsyncMock()
+        mock_user.send = AsyncMock(side_effect=forbidden)
+        mock_client.fetch_user = AsyncMock(return_value=mock_user)
+
+        mock_guild_prefs = Mock()
+        mock_guild_prefs.get_preferences.return_value = {}
+        mock_guild_prefs.pings_enabled.return_value = False
+        mock_opt_outs = Mock()
+        mock_subscribers = Mock()
+        mock_subscribers.all.return_value = [987654]
+
+        messenger = DiscordMessenger(
+            _discord_client(mock_client),
+            _settings(),
+            mock_guild_prefs,
+            mock_opt_outs,
+            mock_subscribers,
+        )
+
+        await messenger.dispatch_from_database(mock_db)
+
+        mock_db.mark_market_alerts_sent_batch.assert_not_called()
+        mock_subscribers.discard.assert_called_once_with(987654)
 
     asyncio.run(_run())
 
@@ -316,7 +603,7 @@ def test_dispatch_from_database_applies_preferences():
                 },
             }
         }
-        mock_db.check_cooldown.return_value = True
+        mock_db.has_market_alert_been_sent.return_value = False
 
         # Create mock client with guild
         mock_client = _DummyClient(loop)
@@ -391,7 +678,7 @@ def test_dispatch_from_database_includes_role_mentions():
                 },
             }
         }
-        mock_db.check_cooldown.return_value = True
+        mock_db.has_market_alert_been_sent.return_value = False
 
         # Create mock client with guild and role
         mock_client = _DummyClient(loop)
@@ -475,7 +762,7 @@ def test_dispatch_from_database_handles_powerplay():
                 "stations": {},
             }
         }
-        mock_db.check_cooldown.return_value = True
+        mock_db.has_market_alert_been_sent.return_value = False
 
         # Create mock client with guild
         mock_client = _DummyClient(loop)
@@ -557,7 +844,7 @@ def test_dispatch_per_recipient_filtering():
                 },
             }
         }
-        mock_db.check_cooldown.return_value = True
+        mock_db.has_market_alert_been_sent.return_value = False
 
         # Create two guilds with different preferences
         mock_client = _DummyClient(loop)
@@ -668,11 +955,12 @@ def test_dispatch_partial_metal_cooldown():
             }
         }
 
-        # Gold passes cooldown, Palladium doesn't
-        def check_cooldown_side_effect(**kwargs):
-            return kwargs["metal"] == "Gold"
+        def has_market_alert_been_sent_side_effect(**kwargs):
+            return kwargs["metal"] == "Palladium"
 
-        mock_db.check_cooldown.side_effect = check_cooldown_side_effect
+        mock_db.has_market_alert_been_sent.side_effect = (
+            has_market_alert_been_sent_side_effect
+        )
 
         # Create mock client with guild
         mock_client = _DummyClient(loop)
@@ -717,7 +1005,6 @@ def test_dispatch_partial_metal_cooldown():
         except (AttributeError, TypeError):
             pass
 
-        # Verify only Gold is in message (Palladium filtered by cooldown)
         if mock_channel.send.called:
             message_content = mock_channel.send.call_args[0][0]
             assert "Gold" in message_content
@@ -749,7 +1036,7 @@ def test_dispatch_empty_filtered_result():
                 },
             }
         }
-        mock_db.check_cooldown.return_value = True
+        mock_db.has_market_alert_been_sent.return_value = False
 
         # Create mock client with guild
         mock_client = _DummyClient(loop)
