@@ -39,7 +39,7 @@ But there's a catch. Once a station's discounted price shows up on **Inara**, it
 
 **Here's the edge:** the bubble is so large that Inara doesn't update every station in real time. This bot detects the stations that *are* in infrastructure failure but whose market data Inara *hasn't caught up on yet*. Their price is still 90% off, their stock is untouched, and nobody else knows about them. That's where the real money is.
 
-In addition, you can use this cheap gold to earn merits by selling it in an acquisition system. The bot will alert you when such opportunities are available. You can choose which PowerPlay factions to receive alerts from using commands. See [Preferences](#preferences) and [Commands](#commands).
+In addition, you can use this cheap gold to earn merits by selling it in an acquisition system. The bot will append merit-earning PowerPlay information to market messages when such opportunities are available in the same system. You can choose which PowerPlay factions to receive this appended information for using preferences. See [Preferences](#preferences) and [Commands](#commands).
 
 > Note: You may read about other effects of BGS on markets [here](https://cdb.sotl.org.uk/effects)
 
@@ -52,7 +52,7 @@ In addition, you can use this cheap gold to earn merits by selling it in an acqu
 - **DM & Server Alerts** — Get alerts via direct message, server channel, or both
 - **Customizable Filters** — Filter by station type, commodity, or PowerPlay faction
 - **Per-Server Configuration** — Custom channels, roles, ping control, and opt-out
-- **Smart Cooldowns** — 48-hour cooldown per station/metal/recipient prevents duplicate alerts
+- **Opportunity Lifecycle** — Alerts fire once per recipient while a hidden market remains active, then can fire again if the opportunity expires and later reappears.
 
 ## Preferences
 
@@ -64,7 +64,7 @@ Want to filter your alerts? Use `/set_preferences` to choose station types, comm
 | Commodity | Gold, Palladium, Silver | `/set_preferences commodity Gold` |
 | PowerPlay | *(Any faction leader)* | `/set_preferences powerplay Zachary Hudson` |
 
-> Preferences can be set per-user or per-server. Add `target: server` to set server-wide defaults (requires Manage Server permission). Without `target`, preferences apply to your personal alerts.
+> Preferences can be set per-user or per-server. Add `target: server` to set server-wide defaults (requires Manage Server permission). Without `target`, preferences apply to your personal alerts. PowerPlay preferences filter which appended PowerPlay information appears in alerts, not whether commodity alerts are sent.
 
 ## Commands
 
@@ -105,13 +105,13 @@ These commands work in any server with the bot, or in DMs. No special permission
 
 ### Preference Commands
 
-Filter which alerts you receive. Add `target: server` for server-wide defaults (requires Manage Server).
+Filter which alerts you receive, or which PowerPlay merit information is appended. Add `target: server` for server-wide defaults (requires Manage Server).
 
 | Command | Description |
 |---------|-------------|
 | `/set_preferences station_type` | Filter by station type (Starport, Outpost, Surface Port) |
 | `/set_preferences commodity` | Filter by commodity (Gold, Palladium, Silver) |
-| `/set_preferences powerplay` | Filter by PowerPlay faction |
+| `/set_preferences powerplay` | Filter PowerPlay information appended to market alerts |
 | `/set_preferences show` | Display your current preferences |
 | `/set_preferences remove` | Remove specific options from a category |
 | `/set_preferences clear` | Clear one category or all preferences |
@@ -120,7 +120,7 @@ Filter which alerts you receive. Add `target: server` for server-wide defaults (
 
 ## Usage
 
-After setting up the bot, simply wait for pings. Successful gold detections will occur sometimes a few times a week, sometimes once a month. Alerts have a **cooldown of 48 hours**. Sometimes, some fields of the message will be "unknown". These stations are still worth visiting because sometimes Inara does not get full market data due to colonization.
+After setting up the bot, simply wait for pings. Successful gold detections will occur sometimes a few times a week, sometimes once a month. Repeated alerts are suppressed while the same opportunity remains active, meaning each recipient receives exactly one alert per active opportunity. If the opportunity expires and later reappears, a new alert will be sent. Sometimes, some fields of the message will be "unknown". These stations are still worth visiting because sometimes Inara does not get full market data due to colonization.
 
 Once you get a message, just go to the station in your hauling ship (and your carrier if you have one) and then start buying the commodity. You can use Inara commodity search to find good sell prices nearby. Or you can load your carrier to the top and then find good sell prices later. You can make hundreds of millions of credits by doing this, and this is definitely the best trading you can find outside of much rarer special conditions.
 
