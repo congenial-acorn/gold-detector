@@ -81,7 +81,6 @@ async def on_ready():
         "Default ping role: @%s",
         settings.role_name_override or settings.default_role_name,
     )
-    logger.info("Cooldown after each message: %sh", settings.cooldown_hours)
     logger.info("Monitor interval: %ss", settings.monitor_interval_seconds)
     logger.info("HTTP cooldown: %ss", settings.http_cooldown_seconds)
 

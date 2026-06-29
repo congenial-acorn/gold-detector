@@ -56,13 +56,10 @@ def _update_systems(
         metals.append(metal)
 
 
-def monitor_metals(
-    near_urls, metals, cooldown_hours=0, market_db: Optional[MarketDatabase] = None
-):
+def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None):
     logger.info(
-        "Starting monitor loop: checking %s metals with %sh cooldown",
+        "Starting monitor loop: checking %s metals",
         len(metals),
-        cooldown_hours,
     )
 
     while True:

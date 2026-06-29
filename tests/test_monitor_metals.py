@@ -79,7 +79,6 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
         monitor.monitor_metals(
             ["dummy"],
             ["Gold"],
-            cooldown_hours=1,
             market_db=mock_db,
         )
 
@@ -155,7 +154,6 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
         monitor.monitor_metals(
             ["dummy"],
             ["Silver"],
-            cooldown_hours=1,
             market_db=mock_db,
         )
 
@@ -240,7 +238,6 @@ def test_monitor_uses_per_commodity_thresholds_lower(monkeypatch):
         monitor.monitor_metals(
             ["dummy"],
             ["Gold"],
-            cooldown_hours=1,
             market_db=mock_db,
         )
 
@@ -311,7 +308,6 @@ def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
         monitor.monitor_metals(
             ["dummy"],
             ["Gold"],
-            cooldown_hours=1,
             market_db=mock_db,
         )
 

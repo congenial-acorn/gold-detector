@@ -42,8 +42,6 @@ def _settings() -> Settings:
         debug_server_id=None,
         debug_mode_dms=False,
         debug_user_id=None,
-        cooldown_hours=48,
-        cooldown_seconds=48 * 3600,
         queue_max_size=10,
         help_url="https://example.com",
         monitor_interval_seconds=1.0,

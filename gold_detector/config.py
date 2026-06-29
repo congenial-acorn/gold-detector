@@ -70,8 +70,6 @@ class Settings:
     debug_server_id: Optional[int]
     debug_mode_dms: bool
     debug_user_id: Optional[int]
-    cooldown_hours: float
-    cooldown_seconds: int
     queue_max_size: int
     help_url: str
     monitor_interval_seconds: float
@@ -91,11 +89,6 @@ class Settings:
 
         alert_override = sanitize_channel_name(os.getenv("ALERT_CHANNEL_NAME", ""))
         role_override = sanitize_role_name(os.getenv("ROLE_NAME", ""))
-
-        try:
-            cooldown_hours = float(os.getenv("COOLDOWN_HOURS", "48.0"))
-        except ValueError:
-            cooldown_hours = 48.0
 
         try:
             monitor_interval = float(os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", "1800"))
@@ -120,8 +113,6 @@ class Settings:
             debug_server_id=_int_env("DEBUG_SERVER_ID"),
             debug_mode_dms=_bool_env("DEBUG_MODE_DMS", False),
             debug_user_id=_int_env("DEBUG_USER_ID"),
-            cooldown_hours=cooldown_hours,
-            cooldown_seconds=int(cooldown_hours * 3600),
             queue_max_size=int(os.getenv("DISCORD_QUEUE_MAX_SIZE", "100")),
             help_url=os.getenv(
                 "HELP_URL",
