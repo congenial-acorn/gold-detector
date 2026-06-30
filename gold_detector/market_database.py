@@ -22,7 +22,7 @@ class MetalEntry(TypedDict):
 class PowerplayEntry(TypedDict):
     power: str
     status: str
-    progress: int
+    progress: str
     commodity_urls: str
 
 
@@ -269,7 +269,7 @@ class MarketDatabase:
         system_address: str,
         power: str,
         status: str,
-        progress: int,
+        progress: str,
         commodity_urls: str = "",
     ) -> None:
         """Write or update powerplay data for a system."""
