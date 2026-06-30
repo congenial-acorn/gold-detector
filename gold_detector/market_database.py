@@ -141,7 +141,10 @@ class MarketDatabase:
         if isinstance(value, int):
             return value
         if isinstance(value, str):
-            return int(value)
+            try:
+                return int(value)
+            except ValueError:
+                return 0
         return 0
 
     def _strip_legacy_cooldowns(self, data: DatabaseData) -> bool:
