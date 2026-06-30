@@ -2,7 +2,7 @@
 
 # 🔍 Gold Detector Discord Bot
 
-**Find hidden markets selling Gold, Palladium & Silver at 90% off — before anyone else knows they exist**
+**Find hidden markets selling Gold, Palladium & Silver at 90% off before anyone else knows they exist**
 
 <img src="assets/demo.png" alt="Gold Detector in action — real-time market alerts in Discord" width="720" />
 
@@ -33,9 +33,9 @@
 
 ## How It Works
 
-**Infrastructure failure slashes Gold, Palladium, and Silver prices by 90%.** That's the single biggest discount you'll find in Elite: Dangerous trading — buy at a fraction of normal price, then sell elsewhere for 60k+ credits per ton of profit.
+The Infrastructure Failure BGS state slashes Gold, Palladium, and Silver prices by 90%, allowing 60k+ credits of profit/ton. 
 
-But there's a catch. Once a station's discounted price shows up on **Inara**, it gets swarmed like locusts on a crop. Every trader in the bubble piles in, the stock evaporates, and the deal is gone within hours.
+But there's a catch. Once a station's discounted price shows up on **Inara**, the station stock gets drained within hours, and the deal is gone within hours.
 
 **Here's the edge:** the bubble is so large that Inara doesn't update every station in real time. This bot detects the stations that *are* in infrastructure failure but whose market data Inara *hasn't caught up on yet*. Their price is still 90% off, their stock is untouched, and nobody else knows about them. That's where the real money is.
 
@@ -44,7 +44,6 @@ In addition, you can use this cheap gold to earn merits by selling it in an acqu
 > Note: You may read about other effects of BGS on markets [here](https://cdb.sotl.org.uk/effects)
 
 ## Features
-
 - **🔥 90% Off Markets** — When a station hits infrastructure failure, its prices plummet 90%. The bot finds the stations Inara *hasn't* updated yet — so the deal is still live and fully stocked.
 - **Hidden Market Detection** — Catches stations in infrastructure failure whose market data hasn't synced to Inara (price >28,000 CR). Gold and Palladium need over 15,000 tons in stock to trigger an alert; Silver needs over 50,000 tons.
 - **Gold, Palladium & Silver** — Monitors all three commodities
