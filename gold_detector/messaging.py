@@ -9,7 +9,6 @@ import discord
 from discord import AllowedMentions
 
 from .config import Settings
-from .powerplay import get_powerplay_status
 from .services import (
     GuildPreferencesService,
     OptOutService,
@@ -301,66 +300,6 @@ class DiscordMessenger:
 
         # Read all entries from database
         all_data = market_db.read_all_entries()
-        powerplay_refresh_cache: dict[str, Any | None] = {}
-
-        async def _refresh_powerplay_snapshot_for_recipient(
-            recipient_market_lines: list[dict[str, Any]],
-            current_data: dict[str, Any],
-        ) -> dict[str, Any]:
-            if not recipient_market_lines:
-                return current_data
-
-            systems_to_commodities: dict[str, set[str]] = {}
-            system_addresses: dict[str, str] = {}
-            for line in recipient_market_lines:
-                system_name = line["system_name"]
-                systems_to_commodities.setdefault(system_name, set()).add(line["metal"])
-                system_addresses[system_name] = line["system_address"]
-
-            uncached_systems = [
-                system_name
-                for system_name in systems_to_commodities
-                if system_name not in powerplay_refresh_cache
-            ]
-            if not uncached_systems:
-                return current_data
-
-            systems_to_fetch = []
-            for system_name in uncached_systems:
-                system_address = system_addresses.get(system_name, "")
-                if not system_address:
-                    powerplay_refresh_cache[system_name] = (
-                        current_data.get(system_name, {}).get("powerplay") or None
-                    )
-                    continue
-
-                systems_to_fetch.append(
-                    [system_address] + sorted(systems_to_commodities[system_name])
-                )
-
-            if not systems_to_fetch:
-                return current_data
-
-            refreshed_systems = await asyncio.to_thread(
-                get_powerplay_status,
-                systems_to_fetch,
-                market_db,
-            )
-            current_data = market_db.read_all_entries()
-
-            for refreshed_system_name in refreshed_systems:
-                refreshed_entry = current_data.get(refreshed_system_name)
-                powerplay_refresh_cache[refreshed_system_name] = (
-                    refreshed_entry.get("powerplay") if refreshed_entry else None
-                )
-
-            for system_name in uncached_systems:
-                cached_entry = current_data.get(system_name)
-                powerplay_refresh_cache[system_name] = (
-                    cached_entry.get("powerplay") if cached_entry else None
-                )
-
-            return current_data
 
         def _build_powerplay_lines_for_recipient(
             recipient_market_lines: list[dict[str, Any]],
@@ -491,9 +430,6 @@ class DiscordMessenger:
                 )
                 continue
 
-            all_data = await _refresh_powerplay_snapshot_for_recipient(
-                market_lines, all_data
-            )
             powerplay_lines = _build_powerplay_lines_for_recipient(
                 market_lines, prefs, all_data
             )
@@ -620,9 +556,6 @@ class DiscordMessenger:
             if not market_lines:
                 continue
 
-            all_data = await _refresh_powerplay_snapshot_for_recipient(
-                market_lines, all_data
-            )
             powerplay_lines = _build_powerplay_lines_for_recipient(
                 market_lines, prefs, all_data
             )

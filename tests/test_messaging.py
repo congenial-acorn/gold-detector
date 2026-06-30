@@ -123,7 +123,7 @@ def test_dispatch_from_database_reads_entries():
 
         await messenger.dispatch_from_database(mock_db)
 
-        assert mock_db.read_all_entries.call_count == 2
+        assert mock_db.read_all_entries.call_count == 1
 
     asyncio.run(_run())
 
@@ -874,11 +874,8 @@ def test_dispatch_from_database_appends_powerplay_to_market_message_when_prefs_m
         async def fake_to_thread(func, *args):
             return func(*args)
 
-        mock_get_powerplay_status = Mock(return_value={"Sol"})
         original_to_thread = messaging_module.asyncio.to_thread
-        original_get_powerplay_status = messaging_module.get_powerplay_status
         messaging_module.asyncio.to_thread = fake_to_thread
-        messaging_module.get_powerplay_status = mock_get_powerplay_status
         try:
             mock_client = _DummyClient(loop)
             mock_client.user = Mock()
@@ -924,7 +921,6 @@ def test_dispatch_from_database_appends_powerplay_to_market_message_when_prefs_m
             await messenger.dispatch_from_database(mock_db)
         finally:
             messaging_module.asyncio.to_thread = original_to_thread
-            messaging_module.get_powerplay_status = original_get_powerplay_status
 
         sent_message = mock_channel.send.call_args[0][0]
         assert "Hidden markets detected in [Sol]" in sent_message
@@ -967,11 +963,8 @@ def test_dispatch_from_database_keeps_market_message_when_powerplay_pref_fails()
         async def fake_to_thread(func, *args):
             return func(*args)
 
-        mock_get_powerplay_status = Mock(return_value={"Sol"})
         original_to_thread = messaging_module.asyncio.to_thread
-        original_get_powerplay_status = messaging_module.get_powerplay_status
         messaging_module.asyncio.to_thread = fake_to_thread
-        messaging_module.get_powerplay_status = mock_get_powerplay_status
         try:
             mock_client = _DummyClient(loop)
             mock_client.user = Mock()
@@ -1017,111 +1010,12 @@ def test_dispatch_from_database_keeps_market_message_when_powerplay_pref_fails()
             await messenger.dispatch_from_database(mock_db)
         finally:
             messaging_module.asyncio.to_thread = original_to_thread
-            messaging_module.get_powerplay_status = original_get_powerplay_status
 
         sent_message = mock_channel.send.call_args[0][0]
         assert "Hidden markets detected in [Sol]" in sent_message
         assert "Gold stock: 25,000" in sent_message
         assert "Zachary Hudson" not in sent_message
         assert "You can earn merits" not in sent_message
-
-    asyncio.run(_run())
-
-
-def test_dispatch_from_database_refreshes_powerplay_via_asyncio_to_thread_once_per_dispatch():
-    from unittest.mock import AsyncMock, Mock
-
-    import gold_detector.messaging as messaging_module
-    from gold_detector.market_database import MarketDatabase
-
-    async def _run():
-        loop = asyncio.get_running_loop()
-
-        mock_db = Mock(spec=MarketDatabase)
-        mock_db.read_all_entries.return_value = {
-            "Sol": {
-                "system_address": "https://inara.cz/elite/starsystem/1234/",
-                "powerplay": {},
-                "stations": {
-                    "Abraham Lincoln": {
-                        "station_type": "Coriolis Starport",
-                        "url": "https://inara.cz/elite/station/1234/",
-                        "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
-                    }
-                },
-            }
-        }
-        mock_db.has_market_alert_been_sent.return_value = False
-
-        to_thread_calls = []
-        mock_get_powerplay_status = Mock(return_value=set())
-
-        async def fake_to_thread(func, *args):
-            to_thread_calls.append((func, args))
-            return func(*args)
-
-        original_to_thread = messaging_module.asyncio.to_thread
-        original_get_powerplay_status = messaging_module.get_powerplay_status
-        messaging_module.asyncio.to_thread = fake_to_thread
-        messaging_module.get_powerplay_status = mock_get_powerplay_status
-        try:
-            mock_client = _DummyClient(loop)
-            mock_client.user = Mock()
-
-            guilds = []
-            for guild_id in (111111, 222222):
-                mock_guild = Mock()
-                mock_guild.id = guild_id
-                mock_guild.name = f"Guild {guild_id}"
-                mock_guild.me = Mock()
-                mock_channel = Mock()
-                mock_channel.name = "market-watch"
-                mock_channel.send = AsyncMock()
-                mock_channel.permissions_for = Mock(
-                    return_value=Mock(view_channel=True, send_messages=True)
-                )
-                mock_channel.position = 0
-                mock_channel.id = guild_id
-                mock_guild.text_channels = [mock_channel]
-                mock_guild.get_channel.return_value = None
-                mock_guild.roles = []
-                guilds.append(mock_guild)
-            mock_client.guilds = guilds
-
-            mock_user = AsyncMock()
-            mock_user.send = AsyncMock()
-            mock_client.fetch_user = AsyncMock(return_value=mock_user)
-
-            mock_guild_prefs = Mock()
-            mock_guild_prefs.effective_channel_name.return_value = "market-watch"
-            mock_guild_prefs.effective_channel_id.return_value = None
-            mock_guild_prefs.effective_role_name.return_value = "Market Alert"
-            mock_guild_prefs.effective_role_id.return_value = None
-            mock_guild_prefs.get_preferences.return_value = {}
-            mock_guild_prefs.pings_enabled.return_value = False
-            mock_opt_outs = Mock()
-            mock_opt_outs.is_opted_out.return_value = False
-            mock_subscribers = Mock()
-            mock_subscribers.all.return_value = [987654]
-
-            messenger = DiscordMessenger(
-                _discord_client(mock_client),
-                _settings(),
-                mock_guild_prefs,
-                mock_opt_outs,
-                mock_subscribers,
-            )
-
-            await messenger.dispatch_from_database(mock_db)
-        finally:
-            messaging_module.asyncio.to_thread = original_to_thread
-            messaging_module.get_powerplay_status = original_get_powerplay_status
-
-        assert len(to_thread_calls) == 1
-        called_func, called_args = to_thread_calls[0]
-        assert called_func is mock_get_powerplay_status
-        assert called_args[0] == [["https://inara.cz/elite/starsystem/1234/", "Gold"]]
-        assert called_args[1] is mock_db
 
     asyncio.run(_run())
 
