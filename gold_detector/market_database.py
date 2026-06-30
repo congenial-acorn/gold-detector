@@ -157,7 +157,7 @@ class MarketDatabase:
                 del legacy_powerplay["cooldowns"]
                 changed = True
 
-            for station_data in system_data["stations"].values():
+            for station_data in system_data.get("stations", {}).values():
                 metals = station_data.get("metals")
                 if not isinstance(metals, dict):
                     continue
@@ -424,11 +424,11 @@ class MarketDatabase:
             data = self._data
             for system_name in list(data.keys()):
                 system_data = data[system_name]
-                stations = system_data["stations"]
+                stations = system_data.get("stations", {})
 
                 for station_name in list(stations.keys()):
                     station_data = stations[station_name]
-                    metals = station_data["metals"]
+                    metals = station_data.get("metals", {})
 
                     for metal in list(metals.keys()):
                         if (

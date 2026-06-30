@@ -84,6 +84,48 @@ def test_init_migrates_legacy_cooldowns_from_metals_and_powerplay(db_path):
     assert "cooldowns" not in load_data(db_path)["Sol"]["powerplay"]
 
 
+def test_init_and_prune_tolerate_missing_stations_and_metals_keys(db_path):
+    malformed_data = {
+        "GhostSystem": {
+            "system_address": "1",
+            # no "stations" key at all
+        },
+        "HalfSystem": {
+            "system_address": "2",
+            "stations": {
+                "EmptyStation": {
+                    "station_type": "Outpost",
+                    "url": "https://inara.cz/station/1",
+                    # no "metals" key
+                },
+            },
+        },
+        "LiveSystem": {
+            "system_address": "3",
+            "stations": {
+                "Abraham Lincoln": {
+                    "station_type": "Coriolis Starport",
+                    "url": "https://inara.cz/station/123",
+                    "metals": {
+                        "Gold": {
+                            "stock": 25000,
+                            "sent_to": {"guild": {}, "user": {}},
+                        },
+                    },
+                }
+            },
+        },
+    }
+    with open(db_path, "w", encoding="utf-8") as handle:
+        json.dump(malformed_data, handle, indent=2, sort_keys=True)
+
+    migrated = MarketDatabase(db_path)
+
+    migrated.prune_stale(current_opportunities=set(), current_powerplay_systems=set())
+    data = migrated.read_all_entries()
+    assert data == {}
+
+
 def test_write_market_entry_preserves_existing_sent_to_and_initializes_new(db, db_path):
     db.write_market_entry(
         system_name="Sol",
