@@ -1,3 +1,24 @@
+## [1.8.0] - 2026-06-30
+
+### Changed
+- **Opportunity-based alert lifecycle**: Each market opportunity now generates exactly one alert per recipient (server or DM) while it remains active. A new alert only fires if the opportunity expires — price or stock drops back below threshold — and later reappears. This replaces the fixed 48-hour cooldown system and eliminates repeated pings for ongoing opportunities.
+- **Removed `COOLDOWN_HOURS` setting**: No longer used. The `cooldown_hours`/`cooldown_seconds` config and its env var were removed along with the per-recipient cooldown tracking they controlled.
+- **PowerPlay append info rides on the parent market message**: Appended PowerPlay merit info no longer carries its own per-recipient cooldown state; it is sent alongside the market alert it supplements.
+
+### Added
+- **One-scan grace for transient station fetch failures**: Stations that return HTTP errors or fail to parse during a scan are exempt from pruning for one cycle, preventing duplicate alerts when a station briefly fails to fetch and then recovers on the next scan.
+
+### Fixed
+- **Race condition in dispatch**: Dispatch now iterates over a deep copy of the database snapshot, preventing concurrent monitor-thread writes and mid-dispatch sent-state updates from mutating the live data.
+- **Legacy JSON compatibility**: Database loads now guard against missing `stations` and `metals` keys when reading older JSON files.
+- **Malformed stock values**: Non-numeric stock strings from Inara are coerced to zero instead of crashing the scan.
+
+### Technical Details
+- **In-memory cache in MarketDatabase**: Read paths now read from `self._data` under the lock instead of reloading from disk on every operation, matching the pattern used by the guild preferences, subscriber, and opt-out stores. Writes mutate the cache in place and revert from disk on save failure to keep cache and disk consistent.
+- **Sent-state gating**: Each metal record holds `sent_to={"guild": {id: bool}, "user": {id: bool}}`. `write_market_entry` is an upsert that stores only stock, preserving existing sent-state. Only threshold-passing metals are written; pass/fail state is not persisted. Dispatch checks `has_market_alert_been_sent` per recipient and batch-marks with `mark_market_alerts_sent_batch` after a successful send. System-level PowerPlay blocks intentionally carry no `sent_to` — they are appended to market messages only.
+- **Pruning**: `prune_stale` takes a `current_opportunities` set of threshold-passing `(system, station, metal)` tuples plus a `failed_urls` set of station URLs that errored this cycle. A metal is pruned if absent from `current_opportunities` AND its station's URL is not in `failed_urls`. `failed_urls=None` (legacy callers/tests) disables the grace period.
+- 91 tests passing with no new ruff, black, or mypy regressions.
+
 ## [1.7.3] - 2026-06-28
 
 ### Fixed
