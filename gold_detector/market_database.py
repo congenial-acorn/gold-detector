@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import threading
@@ -341,11 +342,15 @@ class MarketDatabase:
         """
         Read all market entries from the database.
 
+        Returns a deep copy so callers can iterate freely without holding the
+        lock or racing with in-flight writes from the monitor thread or
+        ``mark_market_alerts_sent_batch`` during dispatch.
+
         Returns:
             Dictionary containing all systems with their stations, metals, and powerplay data
         """
         with self._lock:
-            return self._data
+            return copy.deepcopy(self._data)
 
     def has_market_alert_been_sent(
         self,
