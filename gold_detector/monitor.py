@@ -74,6 +74,10 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
             # scanned_systems is kept for logging only — pruning is driven by
             # current_opportunities (threshold-passing tuples), NOT scanned_systems.
             scanned_systems = set()
+            # Station URLs that errored this cycle (HTTP failure, parse failure).
+            # prune_stale grants these a one-scan grace period so a transient
+            # error does not wipe sent_to and re-alert recipients next cycle.
+            failed_urls: set[str] = set()
             current_opportunities: set[tuple[str, str, str]] = set()
             market_urls = get_station_market_urls(near_urls)
 
@@ -86,6 +90,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
 
                     header = _parse_header(soup, url)
                     if not header:
+                        failed_urls.add(url)
                         continue
                     st_name, system_name, system_address = header
                     stations_checked += 1
@@ -167,6 +172,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                     logger.error(
                         "Error processing station %s: %s", url, exc, exc_info=True
                     )
+                    failed_urls.add(url)
                     continue
 
             logger.info(
@@ -191,7 +197,9 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                 get_powerplay_status(system_list)
 
             if market_db:
-                market_db.end_scan(current_opportunities, powerplay_systems)
+                market_db.end_scan(
+                    current_opportunities, powerplay_systems, failed_urls
+                )
 
             try:
                 emit_loop_done()

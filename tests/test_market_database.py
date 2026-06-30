@@ -344,6 +344,95 @@ def test_prune_stale_removes_powerplay_for_absent_systems_but_preserves_stations
     )
 
 
+def test_prune_stale_keeps_metals_when_station_fetch_errored(db, db_path):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+    db.mark_market_alerts_sent_batch([("Sol", "Abraham Lincoln", "Gold", "guild", "1")])
+
+    db.prune_stale(set(), failed_urls={"https://inara.cz/station/123"})
+
+    data = load_data(db_path)
+    metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+    assert "Gold" in metals
+    assert metals["Gold"]["sent_to"] == {"guild": {"1": True}, "user": {}}
+
+
+def test_prune_stale_prunes_metals_when_no_error_and_below_threshold(db, db_path):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Silver",
+        stock=60000,
+    )
+
+    db.prune_stale(
+        {("Sol", "Abraham Lincoln", "Silver")}, failed_urls=set()
+    )
+
+    data = load_data(db_path)
+    metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+    assert "Gold" not in metals
+    assert "Silver" in metals
+
+
+def test_prune_stale_grace_on_error_then_prune_on_success(db, db_path):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+    db.mark_market_alerts_sent_batch([("Sol", "Abraham Lincoln", "Gold", "guild", "1")])
+
+    db.prune_stale(set(), failed_urls={"https://inara.cz/station/123"})
+    data = load_data(db_path)
+    assert "Gold" in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+
+    db.prune_stale(set(), failed_urls=set())
+    data = load_data(db_path)
+    assert "Sol" not in data
+
+
+def test_end_scan_forwards_failed_urls_for_grace_period(db, db_path):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+
+    db.begin_scan()
+    db.end_scan(set(), set(), failed_urls={"https://inara.cz/station/123"})
+
+    data = load_data(db_path)
+    assert "Gold" in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+
+
 def test_end_scan_uses_opportunity_and_powerplay_sets(db, db_path):
     db.write_market_entry(
         system_name="Sol",

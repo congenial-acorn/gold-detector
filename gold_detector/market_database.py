@@ -423,8 +423,18 @@ class MarketDatabase:
         self,
         current_opportunities: set[tuple[str, str, str]],
         current_powerplay_systems: set[str] | None = None,
+        failed_urls: set[str] | None = None,
     ) -> None:
-        """Prune inactive opportunities and optionally stale powerplay blocks."""
+        """Prune inactive opportunities and optionally stale powerplay blocks.
+
+        Metals are pruned when absent from current_opportunities, except for
+        stations whose URL is in failed_urls (the fetch errored this cycle —
+        HTTP failure, parse failure). Those get a one-scan grace period so a
+        transient error does not wipe sent_to state and trigger duplicate
+        alerts on the next successful scan.
+
+        When failed_urls is None, no station gets grace.
+        """
         with self._lock:
             data = self._data
             for system_name in list(data.keys()):
@@ -435,13 +445,21 @@ class MarketDatabase:
                     station_data = stations[station_name]
                     metals = station_data.get("metals", {})
 
+                    station_url = station_data.get("url")
+                    station_failed = (
+                        failed_urls is not None and station_url in failed_urls
+                    )
+
                     for metal in list(metals.keys()):
                         if (
                             system_name,
                             station_name,
                             metal,
-                        ) not in current_opportunities:
-                            del metals[metal]
+                        ) in current_opportunities:
+                            continue
+                        if station_failed:
+                            continue
+                        del metals[metal]
 
                     if not metals:
                         del stations[station_name]
@@ -471,11 +489,16 @@ class MarketDatabase:
         self,
         current_opportunities: set[tuple[str, str, str]],
         powerplay_systems: set[str] | None = None,
+        failed_urls: set[str] | None = None,
     ) -> None:
         """
         Mark the end of a scan operation and prune stale opportunities.
+
+        failed_urls is the set of station URLs that errored this cycle (HTTP
+        failure, parse failure). Metals for those stations are granted a
+        one-scan grace period.
         """
         with self._lock:
             self._scan_in_progress = False
 
-        self.prune_stale(current_opportunities, powerplay_systems)
+        self.prune_stale(current_opportunities, powerplay_systems, failed_urls)
