@@ -24,9 +24,20 @@ def nearest_station_urls():
     return list(_NEAREST_STATION_URLS)
 
 
-def main():
-    db_path = Path("market_database.json")
-    market_db = MarketDatabase(db_path)
+def main(market_db: MarketDatabase | None = None):
+    """
+    Run the monitor loop.
+
+    Args:
+        market_db: Optional shared MarketDatabase instance. When provided
+            (e.g. by bot.py via GoldRunner), the monitor and the messenger
+            share the same in-memory state so dispatch sees fresh writes.
+            When None (standalone ``python gold.py``), a new instance is
+            constructed against ``market_database.json`` in the CWD.
+    """
+    if market_db is None:
+        db_path = Path("market_database.json")
+        market_db = MarketDatabase(db_path)
     monitor_metals(
         nearest_station_urls(), metals=commodity_names(), market_db=market_db
     )
