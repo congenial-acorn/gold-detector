@@ -1,3 +1,12 @@
+## [1.8.1] - 2026-07-04
+
+### Fixed
+- **Shared MarketDatabase between monitor and messenger**: bot.py and gold.py each created their own `MarketDatabase` instance pointing at the same file, so dispatch read from a stale in-memory cache that never saw the monitor's fresh writes. First-discovery stations were invisible to alert dispatch — the monitor wrote them, but the messenger's frozen cache meant they were never iterated. Now bot.py's `market_db` is threaded through `GoldRunner` into `gold.main()` so both sides share one instance, one cache, and one lock.
+
+### Technical Details
+- `gold.main()` accepts an optional `market_db` parameter (defaults to creating its own for standalone `python gold.py`). `GoldRunner` accepts a `market_db` kwarg and forwards it to `gold.main(market_db=self.market_db)`. `bot.py` passes its existing `market_db` — the same instance held by `DiscordMessenger` — into `GoldRunner`.
+- 7 new tests in `tests/test_gold_runner.py` covering external-instance forwarding, standalone fallback, GoldRunner storage and pass-through, backward-compat defaults, and an end-to-end invariant proving monitor writes are visible to dispatch reads on a shared instance. 101 tests passing.
+
 ## [1.8.0] - 2026-06-30
 
 ### Changed
