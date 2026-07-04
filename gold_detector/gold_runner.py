@@ -5,18 +5,22 @@ import threading
 import time
 from typing import Callable, Optional
 
+from gold_detector.market_database import MarketDatabase
+
 import gold
 
 
 class GoldRunner:
     def __init__(
         self,
-        emit: Optional[Callable[[str], None]],
-        loop_done: Optional[Callable[[], None]],
+        emit: Optional[Callable[[str], None]] = None,
+        loop_done: Optional[Callable[[], None]] = None,
+        market_db: Optional[MarketDatabase] = None,
         logger: Optional[logging.Logger] = None,
     ):
         self.emit = emit
         self.loop_done = loop_done
+        self.market_db = market_db
         self.logger = logger or logging.getLogger("bot.gold_runner")
 
     def start(self) -> threading.Thread:
@@ -37,7 +41,7 @@ class GoldRunner:
 
                 if hasattr(gold, "main") and callable(getattr(gold, "main")):
                     self.logger.info("Starting gold.py main loop")
-                    gold.main()
+                    gold.main(market_db=self.market_db)
                     raise RuntimeError(
                         "gold.py main() returned unexpectedly (no exception raised)"
                     )

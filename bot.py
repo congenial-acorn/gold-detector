@@ -104,6 +104,7 @@ async def on_ready():
         GoldRunner(
             emit=None,
             loop_done=messenger.loop_done_from_thread,
+            market_db=market_db,
             logger=logger.getChild("gold_runner"),
         ).start()
         logger.info("Started gold.py in background thread.")
