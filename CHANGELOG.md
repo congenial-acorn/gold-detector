@@ -1,3 +1,11 @@
+## [1.8.2] - 2026-07-09
+
+### Fixed
+- **Duplicate alerts after transient network failures**: When a nearest-stations list page failed to fetch (e.g. a brief network outage), stations that would have been discovered from it were silently absent from the scan. The existing one-scan grace only covered station-market page errors, not nearest-stations list-page errors. Affected stations were pruned and their `sent_to` state wiped, so the next successful scan re-alerted every recipient as if the opportunity were brand new.
+
+### Technical Details
+- `get_station_market_urls` now returns `(market_urls, failed_near_urls)` so the caller knows when the scan was partial. `end_scan` gains a `skip_prune` flag; `monitor_metals` passes `skip_prune=True` when any list page failed, so a partial scan makes zero deletion decisions. Normal pruning resumes on the next full scan. 105 tests passing.
+
 ## [1.8.1] - 2026-07-04
 
 ### Fixed
