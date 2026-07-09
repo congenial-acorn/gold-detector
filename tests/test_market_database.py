@@ -433,6 +433,32 @@ def test_end_scan_forwards_failed_urls_for_grace_period(db, db_path):
     assert "Gold" in data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
 
 
+def test_end_scan_skip_prune_preserves_entries_on_partial_scan(db, db_path):
+    """When skip_prune=True (partial scan), entries are preserved even though
+    they are absent from current_opportunities — prevents a sent_to wipe when a
+    nearest-stations list page failed to fetch and the scan could not see all
+    known stations.
+    """
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Coriolis Starport",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+    db.mark_market_alerts_sent_batch([("Sol", "Abraham Lincoln", "Gold", "guild", "1")])
+
+    db.begin_scan()
+    db.end_scan(set(), set(), failed_urls=set(), skip_prune=True)
+
+    data = load_data(db_path)
+    metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+    assert "Gold" in metals
+    assert metals["Gold"]["sent_to"] == {"guild": {"1": True}, "user": {}}
+
+
 def test_end_scan_uses_opportunity_and_powerplay_sets(db, db_path):
     db.write_market_entry(
         system_name="Sol",

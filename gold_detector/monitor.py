@@ -79,7 +79,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
             # error does not wipe sent_to and re-alert recipients next cycle.
             failed_urls: set[str] = set()
             current_opportunities: set[tuple[str, str, str]] = set()
-            market_urls = get_station_market_urls(near_urls)
+            market_urls, failed_near_urls = get_station_market_urls(near_urls)
 
             stations_checked = 0
 
@@ -197,8 +197,17 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                 get_powerplay_status(system_list)
 
             if market_db:
+                if failed_near_urls:
+                    logger.warning(
+                        "Scan incomplete: %d nearest-stations list page(s) "
+                        "failed to fetch; skipping prune to preserve sent_to",
+                        len(failed_near_urls),
+                    )
                 market_db.end_scan(
-                    current_opportunities, powerplay_systems, failed_urls
+                    current_opportunities,
+                    powerplay_systems,
+                    failed_urls,
+                    skip_prune=bool(failed_near_urls),
                 )
 
             try:

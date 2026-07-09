@@ -65,7 +65,7 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     monkeypatch.setattr(
         monitor,
         "get_station_market_urls",
-        lambda near_urls: ["https://inara.cz/elite/station-market/123/"],
+        lambda near_urls: (["https://inara.cz/elite/station-market/123/"], set()),
     )
     monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
@@ -140,7 +140,7 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
     monkeypatch.setattr(
         monitor,
         "get_station_market_urls",
-        lambda near_urls: ["https://inara.cz/elite/station-market/789/"],
+        lambda near_urls: (["https://inara.cz/elite/station-market/789/"], set()),
     )
     monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Starport")
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
@@ -224,7 +224,7 @@ def test_monitor_uses_per_commodity_thresholds_lower(monkeypatch):
     monkeypatch.setattr(
         monitor,
         "get_station_market_urls",
-        lambda near_urls: ["https://inara.cz/elite/station-market/555/"],
+        lambda near_urls: (["https://inara.cz/elite/station-market/555/"], set()),
     )
     monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
@@ -294,7 +294,7 @@ def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
     monkeypatch.setattr(
         monitor,
         "get_station_market_urls",
-        lambda near_urls: ["https://inara.cz/elite/station-market/555/"],
+        lambda near_urls: (["https://inara.cz/elite/station-market/555/"], set()),
     )
     monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
@@ -315,3 +315,34 @@ def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
     # Non-threshold commodity must NOT appear in active opportunities
     call_args = mock_db.end_scan.call_args
     assert call_args[0][0] == set()
+
+
+def test_monitor_skips_prune_when_list_page_fails(monkeypatch):
+    """When a nearest-stations list page fails to fetch (partial scan),
+    monitor_metals must pass skip_prune=True to end_scan so stations it could
+    not see are preserved instead of pruned, which would wipe sent_to and
+    cause duplicate alerts once the list page recovers.
+    """
+    from unittest.mock import Mock
+
+    from gold_detector.market_database import MarketDatabase
+
+    mock_db = Mock(spec=MarketDatabase)
+
+    monkeypatch.setattr(monitor, "http_get", lambda url: None)
+    monkeypatch.setattr(
+        monitor,
+        "get_station_market_urls",
+        lambda near_urls: ([], {"https://failing-list-url"}),
+    )
+    monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
+
+    def fake_sleep(seconds):
+        raise StopMonitoring
+
+    monkeypatch.setattr(monitor.time, "sleep", fake_sleep)
+
+    with pytest.raises(StopMonitoring):
+        monitor.monitor_metals(["dummy"], ["Gold"], market_db=mock_db)
+
+    assert mock_db.end_scan.call_args.kwargs.get("skip_prune") is True

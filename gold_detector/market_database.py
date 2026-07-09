@@ -490,6 +490,7 @@ class MarketDatabase:
         current_opportunities: set[tuple[str, str, str]],
         powerplay_systems: set[str] | None = None,
         failed_urls: set[str] | None = None,
+        skip_prune: bool = False,
     ) -> None:
         """
         Mark the end of a scan operation and prune stale opportunities.
@@ -497,8 +498,17 @@ class MarketDatabase:
         failed_urls is the set of station URLs that errored this cycle (HTTP
         failure, parse failure). Metals for those stations are granted a
         one-scan grace period.
+
+        skip_prune is set when the scan was partial (e.g. a nearest-stations
+        list page failed to fetch). In that case pruning is skipped entirely so
+        stations the scan could not see are not deleted along with their
+        sent_to state — which would otherwise cause duplicate alerts once the
+        list page recovers.
         """
         with self._lock:
             self._scan_in_progress = False
+
+        if skip_prune:
+            return
 
         self.prune_stale(current_opportunities, powerplay_systems, failed_urls)
