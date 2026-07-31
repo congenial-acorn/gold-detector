@@ -1,51 +1,14 @@
 import logging
-import re
-from typing import Any, List, Optional, Set
-
-from bs4 import BeautifulSoup
+from typing import List, Optional, Set
 
 from .alert_helpers import assemble_commodity_links, mask_commodity_links
 from .commodities import name_to_id_map
+from .edsm_client import fetch_system_stations
 from .http_client import http_get
 from .market_database import MarketDatabase
+from .spansh_client import fetch_powerplay
 
 logger = logging.getLogger("gold.powerplay")
-
-
-def _parse_powerplay_fields(block) -> dict[str, Any]:
-    power_link = block.find("a", href=re.compile(r"/elite/power/\d+/?"))
-    power_name = power_link.get_text(strip=True) if power_link else None
-
-    role_tag = block.find("small")
-    role_text = role_tag.get_text(" ", strip=True).strip("()") if role_tag else None
-
-    status_tag = block.find("span", class_=lambda c: c and "bigger" in c.split())
-    status_text = status_tag.get_text(" ", strip=True) if status_tag else None
-
-    percent_text = None
-    neg_tag = block.find("span", class_="negative")
-    if neg_tag:
-        raw = neg_tag.get_text(" ", strip=True)
-        m_pct = re.search(r"(\d+(?:[.,]\d+)?)%", raw)
-        percent_text = f"{m_pct.group(1)}%" if m_pct else (raw or None)
-
-    parts = []
-    if power_name:
-        parts.append(f"power={power_name}")
-    if role_text:
-        parts.append(f"role={role_text}")
-    if status_text:
-        parts.append(f"status={status_text}")
-    if percent_text:
-        parts.append(f"progress={percent_text}")
-
-    return {
-        "power": power_name,
-        "role": role_text,
-        "status": status_text,
-        "progress": percent_text,
-        "parts": parts,
-    }
 
 
 def _build_commodity_ids(system: List[str]) -> List[int]:
@@ -65,137 +28,70 @@ def _clear_stale_powerplay(
 
 
 def get_powerplay_status(
-    systems, market_db: Optional[MarketDatabase] = None
+    systems,
+    market_db: Optional[MarketDatabase] = None,
+    failed_systems: Optional[Set[str]] = None,
 ) -> Set[str]:
     """Check each system in the list for Powerplay status."""
     processed_systems: Set[str] = set()
     for system in systems:
-        system_url = system[0]
+        if len(system) < 2:
+            continue
+        system_name = system[0]
+        system_url = system[1]
         try:
-            resp = http_get(system_url)
-            soup = BeautifulSoup(resp.text, "html.parser")
-
-            system_name = None
-            h2 = soup.find("h2")
-            if h2:
-                raw_name = h2.get_text(" ", strip=True)
-                system_name = re.sub(r"[\uE000-\uF8FF]", "", raw_name)
-                system_name = re.sub(r"\\u[0-9a-fA-F]{4}", "", system_name).strip()
-                # Strip unicode variation selectors (VS1-VS16) to prevent name mismatch with station pages
-                system_name = re.sub(r"[\uFE00-\uFE0F]", "", system_name).strip()
-
-            label = soup.find("span", string=re.compile(r"Powerplay", re.IGNORECASE))
-            if not label:
-                logger.info(
-                    "No Powerplay section found for %s", system_name or system_url
-                )
+            edsm_system = fetch_system_stations(system_name)
+            powerplay = fetch_powerplay(edsm_system.id64)
+            if powerplay is None:
+                logger.info("No Powerplay control data found for %s", system_name)
                 _clear_stale_powerplay(market_db, system_name)
                 continue
 
-            block = label.find_parent("div")
-            if block is None:
-                logger.info(
-                    "Powerplay section malformed for %s", system_name or system_url
-                )
-                _clear_stale_powerplay(market_db, system_name)
-                continue
-
-            fields = _parse_powerplay_fields(block)
-            status_text = fields["status"]
-
-            if not fields["parts"]:
-                logger.info(
-                    "Powerplay section present but empty for %s",
-                    system_name or system_url,
-                )
-                _clear_stale_powerplay(market_db, system_name)
-                continue
-
-            msg = f"Powerplay info for {system_name or system_url}: " + "; ".join(
-                fields["parts"]
-            )
-            logger.info(msg)
-
-            ids = _build_commodity_ids(system)
-
-            if status_text == "Unoccupied":
-                logger.debug(
-                    "Powerplay status is Unoccupied for %s", system_name or system_url
-                )
-                _clear_stale_powerplay(market_db, system_name)
-                continue
-
-            if status_text == "Fortified":
-                commodity_url = assemble_commodity_links(
-                    ids, system_name or "", 20, fetch=http_get
-                )
-                if not commodity_url:
-                    logger.debug(
-                        "No commodity links found for Fortified system %s",
-                        system_name or system_url,
-                    )
-                    _clear_stale_powerplay(market_db, system_name)
-                    continue
-
-                masked_links = mask_commodity_links(commodity_url)
-                if market_db:
-                    market_db.write_powerplay_entry(
-                        system_name=system_name or "",
-                        system_address=system_url,
-                        power=fields["power"],
-                        status=status_text,
-                        progress=fields["progress"],
-                        commodity_urls=masked_links,
-                    )
-                    processed_systems.add(system_name or "")
-
-                logger.info(
-                    "Powerplay opportunity: %s is a %s %s system with acquisition systems nearby",
-                    system_name,
-                    fields["power"],
-                    status_text,
-                )
-
-            elif status_text == "Stronghold":
-                commodity_url = assemble_commodity_links(
-                    ids, system_name or "", 30, fetch=http_get
-                )
-                if not commodity_url:
-                    logger.debug(
-                        "No commodity links found for Stronghold system %s",
-                        system_name or system_url,
-                    )
-                    _clear_stale_powerplay(market_db, system_name)
-                    continue
-
-                masked_links = mask_commodity_links(commodity_url)
-                if market_db:
-                    market_db.write_powerplay_entry(
-                        system_name=system_name or "",
-                        system_address=system_url,
-                        power=fields["power"],
-                        status=status_text,
-                        progress=fields["progress"],
-                        commodity_urls=masked_links,
-                    )
-                    processed_systems.add(system_name or "")
-
-                logger.info(
-                    "Powerplay opportunity: %s is a %s %s system",
-                    system_name,
-                    fields["power"],
-                    status_text,
-                )
-
-            else:
+            if powerplay.status not in {"Fortified", "Stronghold"}:
                 logger.info(
                     "Powerplay status %s is not Fortified/Stronghold for %s",
-                    status_text,
-                    system_name or system_url,
+                    powerplay.status,
+                    system_name,
                 )
                 _clear_stale_powerplay(market_db, system_name)
+                continue
+
+            ids = _build_commodity_ids(system[2:])
+            distance = 20 if powerplay.status == "Fortified" else 30
+            commodity_url = assemble_commodity_links(
+                ids, system_name, distance, fetch=http_get
+            )
+            if not commodity_url:
+                logger.debug(
+                    "No commodity links found for %s system %s",
+                    powerplay.status,
+                    system_name,
+                )
+                _clear_stale_powerplay(market_db, system_name)
+                continue
+
+            masked_links = mask_commodity_links(commodity_url)
+            if market_db:
+                market_db.write_powerplay_entry(
+                    system_name=system_name,
+                    system_address=system_url,
+                    power=powerplay.power,
+                    status=powerplay.status,
+                    progress=powerplay.progress,
+                    commodity_urls=masked_links,
+                )
+                processed_systems.add(system_name)
+
+            logger.info(
+                "Powerplay opportunity: %s is a %s %s system",
+                system_name,
+                powerplay.power,
+                powerplay.status,
+            )
 
         except Exception as exc:  # noqa: BLE001
+            if failed_systems is not None:
+                failed_systems.add(system_name)
             logger.error(
                 "Failed to fetch Powerplay status from %s: %s",
                 system_url,
