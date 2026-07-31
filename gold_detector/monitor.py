@@ -1,16 +1,16 @@
 import datetime
 import logging
 import os
-import re
 import time
 from typing import Dict, List, Optional
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from gold_detector.commodities import get_commodity
+from gold_detector.edsm_client import clear_station_cache, get_station_type
 from gold_detector.emitter import emit_loop_done
 from gold_detector.http_client import http_get
-from gold_detector.inara_client import get_station_market_urls, get_station_type
+from gold_detector.inara_client import get_station_market_urls
 from gold_detector.market_database import MarketDatabase
 from gold_detector.powerplay import get_powerplay_status
 
@@ -19,20 +19,27 @@ logger = logging.getLogger("gold.monitor")
 MONITOR_INTERVAL_SECONDS = float(os.getenv("GOLD_MONITOR_INTERVAL_SECONDS", str(1800)))
 
 
-def _parse_header(soup: BeautifulSoup, url: str):
+def _parse_header(soup: BeautifulSoup, url: str) -> tuple[str, str, str] | None:
     header = soup.find("h2")
-    if header is None:
+    if not isinstance(header, Tag):
         logger.warning("Missing <h2> header on %s; skipping", url)
         return None
 
-    a_tags = header.find_all("a", href=True)
+    a_tags = [
+        anchor for anchor in header.find_all("a", href=True) if isinstance(anchor, Tag)
+    ]
     if len(a_tags) < 2:
         logger.warning("Incomplete header links on %s; skipping", url)
         return None
 
+    system_href = a_tags[1].get("href")
+    if not isinstance(system_href, str):
+        logger.warning("Invalid system link on %s; skipping", url)
+        return None
+
     st_name = a_tags[0].get_text(strip=True)
     system_name = a_tags[1].get_text(strip=True)
-    system_address = f"https://inara.cz{a_tags[1]['href']}"
+    system_address = f"https://inara.cz{system_href}"
     return st_name, system_name, system_address
 
 
@@ -49,9 +56,12 @@ def _extract_price_and_stock(row):
 
 
 def _update_systems(
-    systems: Dict[str, List[str]], system_address: str, metal: str
+    systems: Dict[tuple[str, str], List[str]],
+    system_name: str,
+    system_address: str,
+    metal: str,
 ) -> None:
-    metals = systems.setdefault(system_address, [])
+    metals = systems.setdefault((system_name, system_address), [])
     if metal not in metals:
         metals.append(metal)
 
@@ -64,8 +74,9 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
 
     while True:
         try:
-            systems: Dict[str, List[str]] = {}
+            systems: Dict[tuple[str, str], List[str]] = {}
             logger.info("=== Beginning new scan cycle ===")
+            clear_station_cache()
 
             # Begin scan if using database
             if market_db:
@@ -131,16 +142,8 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                             buy_price > commodity.price_threshold
                             and stock > commodity.stock_threshold
                         ):
-                            match = re.search(r"/(\d+)/$", url)
-                            if not match:
-                                logger.warning(
-                                    "Could not extract station ID from URL: %s", url
-                                )
-                                continue
-                            station_id = match.group(1)
-                            st_type = get_station_type(station_id)
-
-                            _update_systems(systems, system_address, metal)
+                            _update_systems(systems, system_name, system_address, metal)
+                            st_type = get_station_type(system_name, st_name)
                             current_opportunities.add((system_name, st_name, metal))
 
                             if market_db:
@@ -181,11 +184,17 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
             )
             logger.info("Starting Powerplay check.")
 
-            system_list = [[url] + found for url, found in systems.items()]
+            system_list = [
+                [system_name, system_url] + found
+                for (system_name, system_url), found in systems.items()
+            ]
             powerplay_systems: set[str] = set()
+            failed_powerplay_systems: set[str] = set()
             if market_db:
                 powerplay_systems = get_powerplay_status(
-                    system_list, market_db=market_db
+                    system_list,
+                    market_db=market_db,
+                    failed_systems=failed_powerplay_systems,
                 )
                 scanned_systems.update(powerplay_systems)
                 logger.info(
@@ -207,6 +216,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                     current_opportunities,
                     powerplay_systems,
                     failed_urls,
+                    failed_powerplay_systems=failed_powerplay_systems,
                     skip_prune=bool(failed_near_urls),
                 )
 

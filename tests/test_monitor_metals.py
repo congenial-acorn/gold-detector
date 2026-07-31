@@ -57,6 +57,10 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     from gold_detector.market_database import MarketDatabase
 
     mock_db = Mock(spec=MarketDatabase)
+    clear_station_cache = Mock()
+    monkeypatch.setattr(
+        monitor, "clear_station_cache", clear_station_cache, raising=False
+    )
 
     class FakeResponse:
         text = HTML_TEMPLATE
@@ -67,7 +71,10 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
         "get_station_market_urls",
         lambda near_urls: (["https://inara.cz/elite/station-market/123/"], set()),
     )
-    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
+    station_type = Mock(return_value="Outpost")
+    monkeypatch.setattr(monitor, "get_station_type", station_type)
+    powerplay_status = Mock(return_value=set())
+    monkeypatch.setattr(monitor, "get_powerplay_status", powerplay_status)
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
 
     def fake_sleep(seconds):
@@ -84,6 +91,8 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
 
     # Verify database methods were called
     mock_db.begin_scan.assert_called_once()
+    clear_station_cache.assert_called_once()
+    station_type.assert_called_once_with("Example System", "Example Station")
     mock_db.write_market_entry.assert_called_once_with(
         system_name="Example System",
         system_address="https://inara.cz/elite/system/456/",
@@ -97,6 +106,59 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     # end_scan receives active opportunity tuples, not scanned system names
     call_args = mock_db.end_scan.call_args
     assert call_args[0][0] == {("Example System", "Example Station", "Gold")}
+    assert powerplay_status.call_args.kwargs["failed_systems"] == set()
+    assert call_args.kwargs["failed_powerplay_systems"] == set()
+
+
+def test_station_type_failure_still_refreshes_powerplay(monkeypatch):
+    from unittest.mock import Mock
+
+    mock_db = Mock()
+
+    class FakeResponse:
+        text = HTML_TEMPLATE
+
+    monkeypatch.setattr(monitor, "http_get", lambda url: FakeResponse())
+    monkeypatch.setattr(
+        monitor,
+        "get_station_market_urls",
+        lambda near_urls: (["https://inara.cz/elite/station-market/123/"], set()),
+    )
+    monkeypatch.setattr(
+        monitor,
+        "get_station_type",
+        lambda system_name, station_name: (_ for _ in ()).throw(
+            RuntimeError("EDSM failed")
+        ),
+    )
+    observed_systems: list[list[str]] = []
+
+    def fail_powerplay(
+        systems: list[list[str]],
+        market_db: object | None = None,
+        failed_systems: set[str] | None = None,
+    ) -> set[str]:
+        observed_systems.extend(systems)
+        assert failed_systems is not None
+        failed_systems.add("Example System")
+        return set()
+
+    monkeypatch.setattr(monitor, "get_powerplay_status", fail_powerplay)
+    monkeypatch.setattr(
+        monitor.time,
+        "sleep",
+        lambda seconds: (_ for _ in ()).throw(StopMonitoring()),
+    )
+
+    with pytest.raises(StopMonitoring):
+        monitor.monitor_metals(["dummy"], ["Gold"], market_db=mock_db)
+
+    assert observed_systems == [
+        ["Example System", "https://inara.cz/elite/system/456/", "Gold"]
+    ]
+    assert mock_db.end_scan.call_args.kwargs["failed_powerplay_systems"] == {
+        "Example System"
+    }
 
 
 HTML_SILVER_TEMPLATE = """
@@ -142,7 +204,9 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
         "get_station_market_urls",
         lambda near_urls: (["https://inara.cz/elite/station-market/789/"], set()),
     )
-    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Starport")
+    monkeypatch.setattr(
+        monitor, "get_station_type", lambda system_name, station_name: "Starport"
+    )
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
 
     def fake_sleep(seconds):
@@ -226,7 +290,9 @@ def test_monitor_uses_per_commodity_thresholds_lower(monkeypatch):
         "get_station_market_urls",
         lambda near_urls: (["https://inara.cz/elite/station-market/555/"], set()),
     )
-    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
+    monkeypatch.setattr(
+        monitor, "get_station_type", lambda system_name, station_name: "Outpost"
+    )
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
 
     def fake_sleep(seconds):
@@ -296,7 +362,9 @@ def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
         "get_station_market_urls",
         lambda near_urls: (["https://inara.cz/elite/station-market/555/"], set()),
     )
-    monkeypatch.setattr(monitor, "get_station_type", lambda station_id: "Outpost")
+    monkeypatch.setattr(
+        monitor, "get_station_type", lambda system_name, station_name: "Outpost"
+    )
     monkeypatch.setattr(monitor.datetime, "datetime", _FixedDateTime)
 
     def fake_sleep(seconds):
