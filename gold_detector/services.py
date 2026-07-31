@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Set, Tuple, TypedDict
 
 from .commodities import commodity_preference_options
 from .config import PROJECT_ROOT, sanitize_channel_name, sanitize_role_name
@@ -26,6 +26,17 @@ PREFERENCE_OPTIONS: Dict[str, Tuple[str, ...]] = {
         "Zemina Torval",
     ),
 }
+
+PreferenceMap = Dict[str, List[str]]
+
+
+class GuildPreferenceRecord(TypedDict, total=False):
+    channel_id: int | str | None
+    channel_name: str | None
+    role_id: int | str | None
+    role_name: str | None
+    pings_enabled: bool
+    preferences: PreferenceMap
 
 
 class JsonStore:
@@ -67,9 +78,7 @@ class GuildPreferencesService:
 
     def _load(
         self,
-    ) -> Tuple[
-        Dict[int, Dict[str, object]], Dict[int, Dict[str, Dict[str, List[str]]]]
-    ]:
+    ) -> Tuple[Dict[int, GuildPreferenceRecord], Dict[int, PreferenceMap]]:
         raw = self.store.load({})
 
         if isinstance(raw, dict) and ("guilds" in raw or "users" in raw):
@@ -80,8 +89,8 @@ class GuildPreferencesService:
             guild_block = raw
             user_block = {}
 
-        parsed_guilds: Dict[int, Dict[str, object]] = {}
-        parsed_users: Dict[int, Dict[str, Dict[str, List[str]]]] = {}
+        parsed_guilds: Dict[int, GuildPreferenceRecord] = {}
+        parsed_users: Dict[int, PreferenceMap] = {}
         try:
             for gid_str, vals in (guild_block or {}).items():
                 gid = int(gid_str)
@@ -136,7 +145,7 @@ class GuildPreferencesService:
     def _persist_locked(self) -> None:
         guild_serial = {}
         for gid, vals in self._prefs.items():
-            entry = {
+            entry: GuildPreferenceRecord = {
                 "channel_id": vals.get("channel_id"),
                 "channel_name": vals.get("channel_name"),
                 "role_id": vals.get("role_id"),
