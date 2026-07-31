@@ -68,9 +68,7 @@ def test_gold_runner_stores_market_db(tmp_path):
     """GoldRunner constructed with market_db must retain it for later use in _run()."""
     external_db = MarketDatabase(tmp_path / "shared.json")
 
-    runner = GoldRunner(
-        emit=None, loop_done=None, market_db=external_db, logger=None
-    )
+    runner = GoldRunner(emit=None, loop_done=None, market_db=external_db, logger=None)
 
     assert runner.market_db is external_db
 
@@ -108,9 +106,9 @@ def test_gold_runner_passes_market_db_to_gold_main(monkeypatch, tmp_path):
     with pytest.raises(KeyboardInterrupt):
         runner._run()
 
-    assert captured["market_db"] is external_db, (
-        "GoldRunner._run must pass the shared market_db into gold.main(market_db=...)"
-    )
+    assert (
+        captured["market_db"] is external_db
+    ), "GoldRunner._run must pass the shared market_db into gold.main(market_db=...)"
 
 
 def test_gold_runner_without_market_db_passes_none(monkeypatch):
