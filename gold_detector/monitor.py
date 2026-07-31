@@ -5,9 +5,10 @@ import time
 from typing import Dict, List, Optional
 
 from bs4 import BeautifulSoup, Tag
+from requests import RequestException
 
 from gold_detector.commodities import get_commodity
-from gold_detector.edsm_client import clear_station_cache, get_station_type
+from gold_detector.edsm_client import EdsmDataError, clear_station_cache, get_station_type
 from gold_detector.emitter import emit_loop_done
 from gold_detector.http_client import http_get
 from gold_detector.inara_client import get_station_market_urls
@@ -143,7 +144,17 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                             and stock > commodity.stock_threshold
                         ):
                             _update_systems(systems, system_name, system_address, metal)
-                            st_type = get_station_type(system_name, st_name)
+                            try:
+                                st_type = get_station_type(system_name, st_name)
+                            except (EdsmDataError, RequestException) as exc:
+                                logger.warning(
+                                    "EDSM station type lookup failed for %s in %s; "
+                                    "using Unknown: %s",
+                                    st_name,
+                                    system_name,
+                                    exc,
+                                )
+                                st_type = "Unknown"
                             current_opportunities.add((system_name, st_name, metal))
 
                             if market_db:
