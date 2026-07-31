@@ -4,11 +4,11 @@ Test helper utilities for gold detector project.
 Provides reusable test utilities for mocking, counting, and common test scenarios.
 """
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any
+from unittest.mock import patch
 
-from gold_detector.market_database import MarketDatabase
+from gold_detector.market_database import DatabaseData, MarketDatabase
 
 
 @contextmanager
@@ -34,15 +34,11 @@ def count_save_calls(db: MarketDatabase) -> Generator[None, None, None]:
     """
     setattr(db, "save_count", 0)
 
-    original_save = db._save
+    original_save: Callable[[DatabaseData], None] = getattr(db, "_save")
 
-    def counting_wrapper(data: dict[str, Any]) -> None:
+    def counting_wrapper(data: DatabaseData) -> None:
         setattr(db, "save_count", getattr(db, "save_count", 0) + 1)
-        return original_save(data)
+        original_save(data)
 
-    db._save = counting_wrapper
-
-    try:
+    with patch.object(db, "_save", counting_wrapper):
         yield
-    finally:
-        db._save = original_save
