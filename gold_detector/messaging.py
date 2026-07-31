@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional
 import discord
 from discord import AllowedMentions
 
+from .bgs_states import BgsFetcher, BgsStateError, SystemBgsQuery
 from .config import Settings
 from .services import (
     GuildPreferencesService,
@@ -31,6 +32,7 @@ class DiscordMessenger:
         subscribers: SubscriberService,
         logger: Optional[logging.Logger] = None,
         market_db: Optional[MarketDatabase] = None,
+        bgs_fetcher: BgsFetcher | None = None,
     ):
         self.client = client
         self.settings = settings
@@ -39,6 +41,7 @@ class DiscordMessenger:
         self.subscribers = subscribers
         self.logger = logger or logging.getLogger("bot.messaging")
         self.market_db = market_db
+        self.bgs_fetcher: BgsFetcher | None = bgs_fetcher
 
     def loop_done_from_thread(self) -> None:
         """Dispatch messages from database (called from gold.py thread)."""
@@ -125,7 +128,10 @@ class DiscordMessenger:
                     systems[system_name] = {
                         "system_address": line["system_address"],
                         "stations": {},
+                        "bgs_states": set(),
                     }
+
+                systems[system_name]["bgs_states"].update(line.get("bgs_states", ()))
 
                 station_name = line["station_name"]
                 if station_name not in systems[system_name]["stations"]:
@@ -157,6 +163,14 @@ class DiscordMessenger:
                     lines.append(
                         f"- [{station_name}](<{station_data['url']}>) "
                         f"({station_data['station_type']}) - {metals_str}"
+                    )
+
+                bgs_states = sorted(system_data["bgs_states"], key=str.casefold)
+                if bgs_states:
+                    state_phrase = "state is" if len(bgs_states) == 1 else "states are"
+                    lines.append(
+                        f"{', '.join(bgs_states)} {state_phrase} present, "
+                        "supply will be reduced."
                     )
 
                 # Add powerplay lines for this system
@@ -300,6 +314,24 @@ class DiscordMessenger:
 
         # Read all entries from database
         all_data = market_db.read_all_entries()
+        bgs_warnings = {}
+        if self.bgs_fetcher is not None:
+            bgs_queries = [
+                SystemBgsQuery(
+                    system_name=system_name,
+                    system_address=system_data.get("system_address", ""),
+                    station_names=frozenset(system_data.get("stations", {})),
+                )
+                for system_name, system_data in all_data.items()
+                if system_data.get("system_address") and system_data.get("stations")
+            ]
+            try:
+                bgs_warnings = await self.bgs_fetcher(bgs_queries)
+            except BgsStateError:
+                self.logger.warning(
+                    "BGS enrichment failed; sending market alerts without warnings",
+                    exc_info=True,
+                )
 
         def _build_powerplay_lines_for_recipient(
             recipient_market_lines: list[dict[str, Any]],
@@ -404,6 +436,9 @@ class DiscordMessenger:
                                         "url": url,
                                         "metal": metal,
                                         "stock": stock,
+                                        "bgs_states": bgs_warnings.get(
+                                            system_name, {}
+                                        ).get(station_name, ()),
                                     }
                                 )
                                 sent_entries.append(
@@ -541,6 +576,9 @@ class DiscordMessenger:
                                         "url": url,
                                         "metal": metal,
                                         "stock": stock,
+                                        "bgs_states": bgs_warnings.get(
+                                            system_name, {}
+                                        ).get(station_name, ()),
                                     }
                                 )
                                 sent_entries.append(
