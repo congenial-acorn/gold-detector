@@ -1,3 +1,17 @@
+## [1.9.0] - 2026-07-31
+
+### Added
+- **Verified BGS supply warnings**: Market alerts now identify supply-reducing faction states beyond Infrastructure Failure.
+- **EDSM and Spansh data clients**: Station metadata, controlling factions, faction states, and PowerPlay status now come from dedicated EDSM and Spansh API calls instead of being scraped from Inara pages.
+
+### Changed
+- **PowerPlay lookup flow**: The monitor resolves each system's `id64` through EDSM and queries Spansh for its controlling power, state, and control progress. Authoritative unoccupied systems clear stale PowerPlay data; failed or malformed refreshes preserve the last known valid block.
+- **Station type resolution**: Alert filtering now uses EDSM station metadata. Asteroid bases and megaships are classified as starports so they match existing starport preferences.
+
+### Fixed
+- **Preference command permissions**: Server preference changes now check the invoking interaction's permissions rather than relying on potentially incomplete cached member data.
+
+
 ## [1.8.2] - 2026-07-09
 
 ### Fixed
