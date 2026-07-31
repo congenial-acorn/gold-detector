@@ -67,6 +67,23 @@ def test_parse_system_stations_maps_asteroid_bases_to_starports() -> None:
     assert result.stations[0].station_type == "Starport (Asteroid base)"
 
 
+def test_parse_system_stations_maps_mega_ships_to_starports() -> None:
+    payload = {
+        "id64": 123,
+        "stations": [
+            {
+                "name": "Rescue Vessel",
+                "type": "Mega ship",
+                "controllingFaction": {"name": "Rescue Owners"},
+            }
+        ],
+    }
+
+    result = parse_system_stations(payload)
+
+    assert result.stations[0].station_type == "Starport (Mega ship)"
+
+
 def test_parse_system_factions_reads_active_states() -> None:
     payload = {
         "factions": [
