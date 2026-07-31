@@ -196,7 +196,7 @@ def test_write_powerplay_entry_never_writes_or_preserves_cooldowns(db_path):
         system_address="10477373803",
         power="Zachary Hudson",
         status="Stronghold",
-        progress=80,
+        progress="80%",
         commodity_urls="links",
     )
 
@@ -204,7 +204,7 @@ def test_write_powerplay_entry_never_writes_or_preserves_cooldowns(db_path):
     assert data["Sol"]["powerplay"] == {
         "power": "Zachary Hudson",
         "status": "Stronghold",
-        "progress": 80,
+        "progress": "80%",
         "commodity_urls": "links",
     }
 
@@ -344,6 +344,35 @@ def test_prune_stale_removes_powerplay_for_absent_systems_but_preserves_stations
     )
 
 
+def test_end_scan_preserves_powerplay_when_refresh_failed(db, db_path):
+    db.write_market_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        station_name="Abraham Lincoln",
+        station_type="Starport (Orbis Starport)",
+        url="https://inara.cz/station/123",
+        metal="Gold",
+        stock=25000,
+    )
+    db.write_powerplay_entry(
+        system_name="Sol",
+        system_address="10477373803",
+        power="Jerome Archer",
+        status="Stronghold",
+        progress="63.2%",
+        commodity_urls="links",
+    )
+
+    db.begin_scan()
+    db.end_scan(
+        {("Sol", "Abraham Lincoln", "Gold")},
+        powerplay_systems=set(),
+        failed_powerplay_systems={"Sol"},
+    )
+
+    assert load_data(db_path)["Sol"]["powerplay"]["status"] == "Stronghold"
+
+
 def test_prune_stale_keeps_metals_when_station_fetch_errored(db, db_path):
     db.write_market_entry(
         system_name="Sol",
@@ -384,9 +413,7 @@ def test_prune_stale_prunes_metals_when_no_error_and_below_threshold(db, db_path
         stock=60000,
     )
 
-    db.prune_stale(
-        {("Sol", "Abraham Lincoln", "Silver")}, failed_urls=set()
-    )
+    db.prune_stale({("Sol", "Abraham Lincoln", "Silver")}, failed_urls=set())
 
     data = load_data(db_path)
     metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]

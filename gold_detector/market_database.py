@@ -424,6 +424,7 @@ class MarketDatabase:
         current_opportunities: set[tuple[str, str, str]],
         current_powerplay_systems: set[str] | None = None,
         failed_urls: set[str] | None = None,
+        failed_powerplay_systems: set[str] | None = None,
     ) -> None:
         """Prune inactive opportunities and optionally stale powerplay blocks.
 
@@ -466,6 +467,10 @@ class MarketDatabase:
 
                 if current_powerplay_systems is not None and (
                     system_name not in current_powerplay_systems
+                    and (
+                        failed_powerplay_systems is None
+                        or system_name not in failed_powerplay_systems
+                    )
                 ):
                     _ = system_data.pop("powerplay", None)
 
@@ -490,6 +495,7 @@ class MarketDatabase:
         current_opportunities: set[tuple[str, str, str]],
         powerplay_systems: set[str] | None = None,
         failed_urls: set[str] | None = None,
+        failed_powerplay_systems: set[str] | None = None,
         skip_prune: bool = False,
     ) -> None:
         """
@@ -511,4 +517,9 @@ class MarketDatabase:
         if skip_prune:
             return
 
-        self.prune_stale(current_opportunities, powerplay_systems, failed_urls)
+        self.prune_stale(
+            current_opportunities,
+            powerplay_systems,
+            failed_urls,
+            failed_powerplay_systems,
+        )
