@@ -76,7 +76,7 @@ class PreferencesGroup(app_commands.Group):
                     "Run this in a server to set server preferences.", ephemeral=True
                 )
                 return
-            if not interaction.user.guild_permissions.manage_guild:
+            if not interaction.permissions.manage_guild:
                 await interaction.response.send_message(
                     "You need the Manage Guild permission to change server preferences.",
                     ephemeral=True,
@@ -126,7 +126,7 @@ class PreferencesGroup(app_commands.Group):
         if target == "server":
             if not interaction.guild:
                 raise ValueError("Run this in a server for server preferences.")
-            if not interaction.user.guild_permissions.manage_guild:
+            if not interaction.permissions.manage_guild:
                 action = "view" if for_view else "change"
                 raise ValueError(
                     f"You need the Manage Guild permission to {action} server preferences."
