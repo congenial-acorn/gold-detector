@@ -1,40 +1,43 @@
 import sys
-import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import gold_detector.powerplay as powerplay  # noqa: E402
 
 
-class FakeResponse:
-    def __init__(self, text: str):
-        self.text = text
+def _systems(*metals: str) -> list[list[str]]:
+    return [["Sol", "https://inara.cz/elite/system/456/", *metals]]
 
 
-def _pp_html(status: str, percent: str = "51.8%"):
-    return f"""
-    <html>
-      <body>
-        <h2>Sol \\ue81d</h2>
-        <div>
-          <span class="uppercase minor small">Powerplay</span><br/>
-          <a href="/elite/power/12/">Jerome Archer</a>
-          <small>(Controlling)</small><br/>
-          <span class="bigger"><span class="positive">{status}</span></span>
-          <span class="negative"><br/>{percent}</span>
-        </div>
-      </body>
-    </html>
-    """
+def _mock_powerplay(monkeypatch, status: str | None, progress: str = "51.8%"):
+    monkeypatch.setattr(
+        powerplay,
+        "fetch_system_stations",
+        lambda system_name: SimpleNamespace(id64=10477373803),
+        raising=False,
+    )
+    result = (
+        None
+        if status is None
+        else SimpleNamespace(power="Jerome Archer", status=status, progress=progress)
+    )
+    monkeypatch.setattr(
+        powerplay, "fetch_powerplay", lambda id64: result, raising=False
+    )
+    monkeypatch.setattr(
+        powerplay,
+        "http_get",
+        lambda url: SimpleNamespace(text=""),
+    )
 
 
 def test_powerplay_fortified_builds_links(monkeypatch):
     """Test that powerplay writes commodity links and status."""
-    # Mock http_get to return Fortified status
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
 
     # Mock database to capture write_powerplay_entry calls
     from unittest.mock import Mock
@@ -46,7 +49,7 @@ def test_powerplay_fortified_builds_links(monkeypatch):
         Mock(return_value="http://example.com/links"),
     )
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold", "Palladium"]]
+    systems = _systems("Gold", "Palladium")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     # Verify powerplay entry was written to database
@@ -60,10 +63,7 @@ def test_powerplay_fortified_builds_links(monkeypatch):
 
 def test_powerplay_stronghold_uses_distance_30(monkeypatch):
     """Test that powerplay writes Stronghold status with distance 30."""
-    # Mock http_get to return Stronghold status
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Stronghold"))
-    )
+    _mock_powerplay(monkeypatch, "Stronghold")
 
     # Mock database and commodity links
     from unittest.mock import Mock
@@ -75,7 +75,7 @@ def test_powerplay_stronghold_uses_distance_30(monkeypatch):
         Mock(return_value="http://example.com/links"),
     )
 
-    systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
+    systems = _systems("Gold")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     # Verify powerplay entry was written to database
@@ -96,11 +96,9 @@ def test_get_powerplay_status_writes_to_database(monkeypatch):
     # Create mock database
     mock_db = Mock(spec=MarketDatabase)
 
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
 
-    systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
+    systems = _systems("Gold")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     # Verify database methods were called
@@ -122,11 +120,9 @@ def test_get_powerplay_status_writes_entry_for_fortified_system(monkeypatch):
 
     mock_db = Mock(spec=MarketDatabase)
 
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
 
-    systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
+    systems = _systems("Gold")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     mock_db.write_powerplay_entry.assert_called_once()
@@ -142,11 +138,9 @@ def test_get_powerplay_status_always_writes_regardless_of_state(monkeypatch):
 
     mock_db = Mock(spec=MarketDatabase)
 
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
 
-    systems = [["https://inara.cz/elite/starsystem/1496596/", "Gold"]]
+    systems = _systems("Gold")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     mock_db.write_powerplay_entry.assert_called_once()
@@ -156,10 +150,7 @@ def test_get_powerplay_status_always_writes_regardless_of_state(monkeypatch):
 
 def test_powerplay_fortified_generates_masked_links(monkeypatch):
     """Test that powerplay generates masked commodity links for Fortified systems."""
-    # Mock http_get to return Fortified status
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
 
     # Mock database and mask_commodity_links
     from unittest.mock import Mock
@@ -178,7 +169,7 @@ def test_powerplay_fortified_generates_masked_links(monkeypatch):
         Mock(return_value="https://inara.cz/test"),
     )
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     # Verify powerplay entry was written with masked links
@@ -190,9 +181,7 @@ def test_powerplay_fortified_generates_masked_links(monkeypatch):
 
 def test_powerplay_stronghold_generates_masked_links(monkeypatch):
     """Test that powerplay generates masked commodity links for Stronghold systems."""
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Stronghold"))
-    )
+    _mock_powerplay(monkeypatch, "Stronghold")
 
     from unittest.mock import Mock
 
@@ -210,7 +199,7 @@ def test_powerplay_stronghold_generates_masked_links(monkeypatch):
         Mock(return_value="https://inara.cz/test2"),
     )
 
-    systems = [["https://inara.cz/elite/starsystem/1496596/", "Palladium"]]
+    systems = _systems("Palladium")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     # Verify powerplay entry was written with masked links
@@ -222,9 +211,7 @@ def test_powerplay_stronghold_generates_masked_links(monkeypatch):
 
 def test_powerplay_calls_mask_commodity_links(monkeypatch):
     """Test that powerplay calls mask_commodity_links with URLs from assemble_commodity_links."""
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
 
     from unittest.mock import Mock
 
@@ -238,11 +225,36 @@ def test_powerplay_calls_mask_commodity_links(monkeypatch):
         Mock(return_value="https://inara.cz/test"),
     )
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     powerplay.get_powerplay_status(systems, market_db=mock_db)
 
     # Verify mask_commodity_links was called
     mock_mask.assert_called_once_with("https://inara.cz/test")
+
+
+@pytest.mark.parametrize("failing_provider", ["edsm", "spansh"])
+def test_provider_error_marks_powerplay_refresh_failed(monkeypatch, failing_provider):
+    _mock_powerplay(monkeypatch, "Fortified")
+    if failing_provider == "edsm":
+        monkeypatch.setattr(
+            powerplay,
+            "fetch_system_stations",
+            lambda system_name: (_ for _ in ()).throw(RuntimeError("EDSM failed")),
+        )
+    else:
+        monkeypatch.setattr(
+            powerplay,
+            "fetch_powerplay",
+            lambda id64: (_ for _ in ()).throw(RuntimeError("Spansh failed")),
+        )
+
+    failed_systems: set[str] = set()
+    result = powerplay.get_powerplay_status(
+        _systems("Gold"), failed_systems=failed_systems
+    )
+
+    assert result == set()
+    assert failed_systems == {"Sol"}
 
 
 def test_build_commodity_ids_includes_silver():
@@ -283,15 +295,13 @@ def test_powerplay_unoccupied_clears_existing_db_entry(monkeypatch, tmp_path):
         system_address="https://inara.cz/elite/starsystem/345798/",
         power="Zachary Hudson",
         status="Fortified",
-        progress=75,
+        progress="75%",
         commodity_urls="[Sell gold here](https://inara.cz/old)",
     )
 
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Unoccupied"))
-    )
+    _mock_powerplay(monkeypatch, "Unoccupied")
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     result = powerplay.get_powerplay_status(systems, market_db=db)
 
     data = db.read_all_entries()
@@ -312,14 +322,13 @@ def test_powerplay_no_section_clears_existing_db_entry(monkeypatch, tmp_path):
         system_address="https://inara.cz/elite/starsystem/345798/",
         power="Zachary Hudson",
         status="Fortified",
-        progress=75,
+        progress="75%",
         commodity_urls="old links",
     )
 
-    no_pp_html = "<html><body><h2>Sol</h2><div>no powerplay here</div></body></html>"
-    monkeypatch.setattr(powerplay, "http_get", lambda url: FakeResponse(no_pp_html))
+    _mock_powerplay(monkeypatch, None)
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     result = powerplay.get_powerplay_status(systems, market_db=db)
 
     data = db.read_all_entries()
@@ -337,15 +346,13 @@ def test_powerplay_non_fortified_stronghold_status_clears_db(monkeypatch, tmp_pa
         system_address="https://inara.cz/elite/starsystem/345798/",
         power="Zachary Hudson",
         status="Fortified",
-        progress=75,
+        progress="75%",
         commodity_urls="old links",
     )
 
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Contested"))
-    )
+    _mock_powerplay(monkeypatch, "Exploited")
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     result = powerplay.get_powerplay_status(systems, market_db=db)
 
     data = db.read_all_entries()
@@ -365,20 +372,18 @@ def test_powerplay_fortified_no_links_clears_db(monkeypatch, tmp_path):
         system_address="https://inara.cz/elite/starsystem/345798/",
         power="Zachary Hudson",
         status="Fortified",
-        progress=75,
+        progress="75%",
         commodity_urls="old links",
     )
 
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
     monkeypatch.setattr(
         powerplay,
         "assemble_commodity_links",
         Mock(return_value=""),
     )
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     result = powerplay.get_powerplay_status(systems, market_db=db)
 
     data = db.read_all_entries()
@@ -396,16 +401,14 @@ def test_powerplay_fortified_writes_to_real_db_no_regression(monkeypatch, tmp_pa
 
     db_path = tmp_path / "market_database.json"
     db = MarketDatabase(db_path)
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Fortified"))
-    )
+    _mock_powerplay(monkeypatch, "Fortified")
     monkeypatch.setattr(
         powerplay,
         "assemble_commodity_links",
         Mock(return_value="http://example.com/links"),
     )
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     result = powerplay.get_powerplay_status(systems, market_db=db)
 
     with open(db_path) as f:
@@ -442,15 +445,13 @@ def test_powerplay_stale_clear_preserves_market_data(monkeypatch, tmp_path):
         system_address="https://inara.cz/elite/starsystem/345798/",
         power="Zachary Hudson",
         status="Stronghold",
-        progress=80,
+        progress="80%",
         commodity_urls="old links",
     )
 
-    monkeypatch.setattr(
-        powerplay, "http_get", lambda url: FakeResponse(_pp_html("Unoccupied"))
-    )
+    _mock_powerplay(monkeypatch, "Unoccupied")
 
-    systems = [["https://inara.cz/elite/starsystem/345798/", "Gold"]]
+    systems = _systems("Gold")
     powerplay.get_powerplay_status(systems, market_db=db)
 
     data = db.read_all_entries()
