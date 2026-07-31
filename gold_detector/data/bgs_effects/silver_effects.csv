@@ -1,0 +1,18 @@
+State,Supply Quantity,Supply Price,Demand Quantity,Demand Price
+Natural Disaster,0.11,0.91,0.1,0.9
+Infrastructure Failure,0.12,0.1,0.12,0.1
+Famine,0.14,0.9,0.15,0.9
+Outbreak,0.14,0.91,0.13,0.9
+Bust,0.15,0.98,0.15,0.98
+Boom,0.18,1.2,0.14,1.2
+Public Holiday,0.5,1.01,1.17,0.99
+Civil Unrest,0.8,1,1.07,0.99
+Pirate Attack,0.8,0.99,1.07,0.99
+Investment,0.89,1.02,2.08,1
+Blight,1,1,0.15,0.9
+Drought,1,1,1,1
+Election,1,1,1,1
+Expansion,1,1.02,2.33,1
+None,1,1,1,1
+Terrorism,1,1,1,1
+Civil Liberty,1.86,1,1.45,1
