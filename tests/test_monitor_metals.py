@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from requests import RequestException
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -110,7 +111,9 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     assert call_args.kwargs["failed_powerplay_systems"] == set()
 
 
-def test_station_type_failure_still_refreshes_powerplay(monkeypatch):
+def test_station_type_failure_preserves_market_alert_and_refreshes_powerplay(
+    monkeypatch,
+):
     from unittest.mock import Mock
 
     mock_db = Mock()
@@ -128,7 +131,7 @@ def test_station_type_failure_still_refreshes_powerplay(monkeypatch):
         monitor,
         "get_station_type",
         lambda system_name, station_name: (_ for _ in ()).throw(
-            RuntimeError("EDSM failed")
+            RequestException("EDSM failed")
         ),
     )
     observed_systems: list[list[str]] = []
@@ -156,6 +159,18 @@ def test_station_type_failure_still_refreshes_powerplay(monkeypatch):
     assert observed_systems == [
         ["Example System", "https://inara.cz/elite/system/456/", "Gold"]
     ]
+    mock_db.write_market_entry.assert_called_once_with(
+        system_name="Example System",
+        system_address="https://inara.cz/elite/system/456/",
+        station_name="Example Station",
+        station_type="Unknown",
+        url="https://inara.cz/elite/station-market/123/",
+        metal="Gold",
+        stock=20000,
+    )
+    assert mock_db.end_scan.call_args.args[0] == {
+        ("Example System", "Example Station", "Gold")
+    }
     assert mock_db.end_scan.call_args.kwargs["failed_powerplay_systems"] == {
         "Example System"
     }
