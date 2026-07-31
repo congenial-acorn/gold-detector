@@ -153,6 +153,30 @@ def test_dispatch_appends_reduced_supply_state_warning(tmp_path: Path) -> None:
     asyncio.run(run_scenario())
 
 
+def test_dispatch_skips_bgs_lookup_for_fully_delivered_entries(
+    tmp_path: Path,
+) -> None:
+    async def run_scenario() -> None:
+        # Given
+        async def unexpected_fetcher(
+            queries: Sequence[SystemBgsQuery],
+        ) -> SystemStationWarnings:
+            raise AssertionError(f"unexpected BGS queries: {queries}")
+
+        messenger, market_db, channel = _build_scenario(tmp_path, unexpected_fetcher)
+        market_db.mark_market_alerts_sent_batch(
+            [("Albarib", "Hale Orbital", "Gold", "guild", "123456")]
+        )
+
+        # When
+        await messenger.dispatch_from_database(market_db)
+
+        # Then
+        assert channel.sent_messages == []
+
+    asyncio.run(run_scenario())
+
+
 def test_dispatch_sends_market_alert_when_bgs_enrichment_fails(tmp_path: Path) -> None:
     async def run_scenario() -> None:
         # Given

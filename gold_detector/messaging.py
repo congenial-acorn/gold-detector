@@ -314,24 +314,58 @@ class DiscordMessenger:
 
         # Read all entries from database
         all_data = market_db.read_all_entries()
-        bgs_warnings = {}
-        if self.bgs_fetcher is not None:
+        bgs_warnings: dict[str, dict[str, tuple[str, ...]]] = {}
+        checked_bgs_stations: dict[str, set[str]] = {}
+        bgs_enrichment_failed = False
+        bgs_fetcher = self.bgs_fetcher
+
+        async def _enrich_pending_market_lines(
+            recipient_market_lines: list[dict[str, Any]],
+        ) -> None:
+            nonlocal bgs_enrichment_failed
+            if bgs_fetcher is None or bgs_enrichment_failed:
+                return
+
+            pending_stations: dict[str, set[str]] = {}
+            system_addresses: dict[str, str] = {}
+            for line in recipient_market_lines:
+                system_name = line["system_name"]
+                station_name = line["station_name"]
+                system_address = line["system_address"]
+                if not system_address:
+                    continue
+                if station_name in checked_bgs_stations.get(system_name, set()):
+                    continue
+                pending_stations.setdefault(system_name, set()).add(station_name)
+                system_addresses[system_name] = system_address
+
             bgs_queries = [
                 SystemBgsQuery(
                     system_name=system_name,
-                    system_address=system_data.get("system_address", ""),
-                    station_names=frozenset(system_data.get("stations", {})),
+                    system_address=system_addresses[system_name],
+                    station_names=frozenset(station_names),
                 )
-                for system_name, system_data in all_data.items()
-                if system_data.get("system_address") and system_data.get("stations")
+                for system_name, station_names in pending_stations.items()
             ]
+            if not bgs_queries:
+                return
+
             try:
-                bgs_warnings = await self.bgs_fetcher(bgs_queries)
+                fetched_warnings = await bgs_fetcher(bgs_queries)
             except BgsStateError:
                 self.logger.warning(
                     "BGS enrichment failed; sending market alerts without warnings",
                     exc_info=True,
                 )
+                bgs_enrichment_failed = True
+                return
+
+            for query in bgs_queries:
+                checked_bgs_stations.setdefault(query.system_name, set()).update(
+                    query.station_names
+                )
+            for system_name, station_warnings in fetched_warnings.items():
+                bgs_warnings.setdefault(system_name, {}).update(station_warnings)
 
         def _build_powerplay_lines_for_recipient(
             recipient_market_lines: list[dict[str, Any]],
@@ -390,7 +424,7 @@ class DiscordMessenger:
 
             prefs = self.guild_prefs.get_preferences("guild", guild.id)
 
-            market_lines = []
+            market_lines: list[dict[str, Any]] = []
             sent_entries = []
             candidate_count = 0
 
@@ -464,6 +498,12 @@ class DiscordMessenger:
                     guild.name,
                 )
                 continue
+
+            await _enrich_pending_market_lines(market_lines)
+            for line in market_lines:
+                line["bgs_states"] = bgs_warnings.get(line["system_name"], {}).get(
+                    line["station_name"], ()
+                )
 
             powerplay_lines = _build_powerplay_lines_for_recipient(
                 market_lines, prefs, all_data
@@ -593,6 +633,12 @@ class DiscordMessenger:
 
             if not market_lines:
                 continue
+
+            await _enrich_pending_market_lines(market_lines)
+            for line in market_lines:
+                line["bgs_states"] = bgs_warnings.get(line["system_name"], {}).get(
+                    line["station_name"], ()
+                )
 
             powerplay_lines = _build_powerplay_lines_for_recipient(
                 market_lines, prefs, all_data
