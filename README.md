@@ -123,7 +123,7 @@ After setting up the bot, simply wait for pings. Successful gold detections will
 
 Once you get a message, just go to the station in your hauling ship (and your carrier if you have one) and then start buying the commodity. You can use Inara commodity search to find good sell prices nearby. Or you can load your carrier to the top and then find good sell prices later. You can make hundreds of millions of credits by doing this, and this is definitely the best trading you can find outside of much rarer special conditions.
 
-**Note:** when you get to the station, you will see the stock is 10% of what the bot reports. The stock will actually refill over time until all of the stock it originally had is gone so do not worry.
+**Note:** when you get to the station, you will see the stock is 12% of what the bot reports. The stock will actually refill over time until all of the stock it originally had is gone so do not worry.
 
 ## FAQ
 
