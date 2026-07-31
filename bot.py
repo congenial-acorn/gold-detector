@@ -4,6 +4,7 @@ from pathlib import Path
 import discord
 from discord import app_commands
 
+from gold_detector.bgs_states import fetch_system_reduced_supply_states
 from gold_detector.commands.alerts import register_alert_commands
 from gold_detector.commands.errors import attach_error_handler
 from gold_detector.commands.health import register_health_commands
@@ -50,6 +51,7 @@ messenger = DiscordMessenger(
     subscribers=subscribers,
     logger=logger.getChild("messaging"),
     market_db=market_db,
+    bgs_fetcher=fetch_system_reduced_supply_states,
 )
 
 register_alert_commands(tree, subscribers, settings.help_url)
