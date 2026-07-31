@@ -47,7 +47,7 @@ def _mapping(value: object, label: str) -> Mapping[str, object]:
 
 def _display_station_type(raw_type: str) -> str:
     normalized = raw_type.casefold()
-    if "starport" in normalized:
+    if "starport" in normalized or normalized == "asteroid base":
         return f"Starport ({raw_type})"
     if normalized == "outpost":
         return "Outpost"
