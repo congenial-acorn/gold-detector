@@ -9,6 +9,7 @@ guild_optout.json
 server_cooldowns.json
 user_cooldowns.json
 guild_prefs.json
+.backup-repo/
 
 # ─── Logs ────────────────────────────────────────────────────────
 *log.txt

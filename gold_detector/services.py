@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import threading
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Sequence, Set, Tuple, TypedDict
 
 from .commodities import commodity_preference_options
 from .config import PROJECT_ROOT, sanitize_channel_name, sanitize_role_name
+from .git_backup import STATE_FILES_LOCK
 
 PREFERENCE_OPTIONS: Dict[str, Tuple[str, ...]] = {
     "station_type": ("Starport", "Outpost", "Surface Port"),
@@ -73,7 +73,7 @@ class GuildPreferencesService:
         self.default_role = default_role
         self.channel_override = sanitize_channel_name(channel_override)
         self.role_override = sanitize_role_name(role_override)
-        self._lock = threading.Lock()
+        self._lock = STATE_FILES_LOCK
         self._prefs, self._user_prefs = self._load()
 
     def _load(
@@ -337,7 +337,7 @@ class GuildPreferencesService:
 class SubscriberService:
     def __init__(self, path: Path):
         self.store = JsonStore(path)
-        self._lock = threading.Lock()
+        self._lock = STATE_FILES_LOCK
         self._subs: Set[int] = self._load()
 
     def _load(self) -> Set[int]:
@@ -368,7 +368,7 @@ class SubscriberService:
 class OptOutService:
     def __init__(self, path: Path):
         self.store = JsonStore(path)
-        self._lock = threading.Lock()
+        self._lock = STATE_FILES_LOCK
         self._opt_out: Set[int] = self._load()
 
     def _load(self) -> Set[int]:

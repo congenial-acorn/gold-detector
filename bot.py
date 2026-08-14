@@ -11,6 +11,7 @@ from gold_detector.commands.health import register_health_commands
 from gold_detector.commands.preferences import register_preference_commands
 from gold_detector.commands.server_settings import register_server_settings_commands
 from gold_detector.config import Settings, configure_logging
+from gold_detector.git_backup import GitBackupConfig, GitBackupService
 from gold_detector.gold_runner import GoldRunner
 from gold_detector.market_database import MarketDatabase
 from gold_detector.messaging import DiscordMessenger
@@ -39,6 +40,24 @@ guild_prefs = GuildPreferencesService(
 )
 subscribers = SubscriberService(paths["subs"])
 opt_outs = OptOutService(paths["guild_optout"])
+
+backup_service = (
+    GitBackupService(
+        GitBackupConfig(
+            remote_url=settings.backup_git_remote,
+            checkout_path=settings.backup_checkout_path,
+            source_paths=(
+                paths["guild_prefs"],
+                paths["guild_optout"],
+                paths["subs"],
+            ),
+            interval_seconds=settings.backup_interval_seconds,
+        ),
+        logger.getChild("git_backup"),
+    )
+    if settings.backup_git_remote
+    else None
+)
 
 db_path = Path("market_database.json")
 market_db = MarketDatabase(db_path)
@@ -96,6 +115,8 @@ async def on_ready():
     _background_started = True
     try:
         await messenger.start_background_tasks()
+        if backup_service is not None:
+            backup_service.start()
 
         try:
             await tree.sync()
@@ -156,3 +177,6 @@ if __name__ == "__main__":
     except Exception as exc:  # noqa: BLE001
         logger.critical("Fatal error running bot: %s", exc, exc_info=True)
         raise
+    finally:
+        if backup_service is not None and not backup_service.stop():
+            logger.error("Git state backup runner did not stop cleanly")
