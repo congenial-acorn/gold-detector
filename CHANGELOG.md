@@ -1,3 +1,17 @@
+## [1.10.0] - 2026-08-13
+
+### Added
+- **Automated offsite state backups**: The bot can now back up guild preferences, guild opt-outs, and DM subscriptions to a private Git repository on startup and at a configurable interval. Configure it with `BACKUP_GIT_REMOTE`, `BACKUP_CHECKOUT_PATH`, and `BACKUP_INTERVAL_SECONDS`.
+
+### Fixed
+- **Empty-state backup startup**: Backups now succeed before any state files have been created instead of failing when Git receives unmatched file paths.
+
+### Technical Details
+- Backup snapshots run inside the bot and share a lock with all three JSON stores, preventing snapshots from overlapping state writes. Git network operations run after the lock is released.
+- Repository safety checks validate the fetch and push destinations, restrict every commit and reachable history entry to the three approved state files, preserve unpushed snapshots across retries, and stop cleanly with the bot.
+- `market_database.json`, environment secrets, and unrelated files are excluded from backups.
+- 148 tests passing with no ruff, mypy, or LSP regressions.
+
 ## [1.9.0] - 2026-07-31
 
 ### Added
