@@ -1,3 +1,8 @@
+## [1.10.1] - 2026-10-26
+
+### Fixed
+- Bumped `certifi` to `2026.10.19` to resolve security issues.
+
 ## [1.10.0] - 2026-08-13
 
 ### Added
