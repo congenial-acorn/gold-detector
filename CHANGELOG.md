@@ -1,3 +1,8 @@
+## [1.10.2]
+
+### Fixed
+- **Station type preferences**: Fixed an issue where Dodec starports were excluded from the starport category.
+
 ## [1.10.1] - 2026-10-26
 
 ### Fixed
