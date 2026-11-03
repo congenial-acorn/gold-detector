@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import discord
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -300,13 +301,39 @@ def test_dispatch_from_database_marks_sent_after_successful_send():
     asyncio.run(_run())
 
 
-def test_dispatch_sends_same_opportunity_to_guild_and_dm_independently():
+@pytest.mark.parametrize(
+    ("station_type", "preference", "should_send"),
+    [
+        ("Coriolis Starport", "Starport", True),
+        ("Dodec", "Starport", True),
+        ("Asteroid base", "Starport", True),
+        ("Mega ship", "Starport", True),
+        ("Civilian Mega Ship", "Starport", True),
+        ("Planetary Outpost", "Surface Port", True),
+        ("Planetary Port", "Surface Port", True),
+        ("Odyssey Settlement", "Surface Port", True),
+        ("Industrial Outpost", "Outpost", True),
+        ("Planetary Outpost", "Outpost", False),
+        ("Dodec", "Surface Port", False),
+        ("Fleet Carrier", "Starport", False),
+    ],
+)
+def test_dispatch_sends_same_opportunity_to_guild_and_dm_independently(
+    station_type: str, preference: str, should_send: bool
+) -> None:
     from unittest.mock import AsyncMock, Mock, call
+    from gold_detector.edsm_client import parse_system_stations
     from gold_detector.market_database import MarketDatabase
 
     async def _run():
         loop = asyncio.get_running_loop()
 
+        station = parse_system_stations(
+            {
+                "id64": 10477373803,
+                "stations": [{"name": "Abraham Lincoln", "type": station_type}],
+            }
+        ).stations[0]
         mock_db = Mock(spec=MarketDatabase)
         mock_db.read_all_entries.return_value = {
             "Sol": {
@@ -314,7 +341,7 @@ def test_dispatch_sends_same_opportunity_to_guild_and_dm_independently():
                 "powerplay": {},
                 "stations": {
                     "Abraham Lincoln": {
-                        "station_type": "Coriolis Starport",
+                        "station_type": station.station_type,
                         "url": "https://inara.cz/station/1234/",
                         "metals": {"Gold": {"stock": 25000, "sent_to": {}}},
                     }
@@ -348,7 +375,7 @@ def test_dispatch_sends_same_opportunity_to_guild_and_dm_independently():
         mock_client.fetch_user = AsyncMock(return_value=mock_user)
 
         mock_guild_prefs = Mock()
-        mock_guild_prefs.get_preferences.return_value = {}
+        mock_guild_prefs.get_preferences.return_value = {"station_type": [preference]}
         mock_guild_prefs.pings_enabled.return_value = False
         mock_guild_prefs.effective_channel_name.return_value = "market-watch"
         mock_guild_prefs.effective_channel_id.return_value = None
@@ -369,8 +396,16 @@ def test_dispatch_sends_same_opportunity_to_guild_and_dm_independently():
 
         await messenger.dispatch_from_database(mock_db)
 
+        if not should_send:
+            mock_channel.send.assert_not_called()
+            mock_user.send.assert_not_called()
+            mock_db.mark_market_alerts_sent_batch.assert_not_called()
+            return
+
         mock_channel.send.assert_called_once()
         mock_user.send.assert_called_once()
+        for send in (mock_channel.send, mock_user.send):
+            assert f"({station_type}) - Gold stock:" in send.call_args.args[0]
         mock_db.mark_market_alerts_sent_batch.assert_has_calls(
             [
                 call([("Sol", "Abraham Lincoln", "Gold", "guild", "123456")]),

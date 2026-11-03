@@ -29,11 +29,11 @@ def test_parse_system_stations_returns_id64_and_station_metadata() -> None:
 
     assert result.id64 == 10477373803
     assert result.stations[0].name == "Abraham Lincoln"
-    assert result.stations[0].station_type == "Starport (Orbis Starport)"
+    assert result.stations[0].station_type == "Orbis Starport"
     assert result.stations[0].controlling_faction == "Mother Gaia"
 
 
-def test_parse_system_stations_maps_surface_port_types() -> None:
+def test_parse_system_stations_preserves_surface_port_types() -> None:
     payload = {
         "id64": 123,
         "stations": [
@@ -47,10 +47,10 @@ def test_parse_system_stations_maps_surface_port_types() -> None:
 
     result = parse_system_stations(payload)
 
-    assert result.stations[0].station_type == "Surface Port (Planetary Port)"
+    assert result.stations[0].station_type == "Planetary Port"
 
 
-def test_parse_system_stations_maps_asteroid_bases_to_starports() -> None:
+def test_parse_system_stations_preserves_asteroid_base_types() -> None:
     payload = {
         "id64": 123,
         "stations": [
@@ -64,10 +64,10 @@ def test_parse_system_stations_maps_asteroid_bases_to_starports() -> None:
 
     result = parse_system_stations(payload)
 
-    assert result.stations[0].station_type == "Starport (Asteroid base)"
+    assert result.stations[0].station_type == "Asteroid base"
 
 
-def test_parse_system_stations_maps_mega_ships_to_starports() -> None:
+def test_parse_system_stations_preserves_mega_ship_types() -> None:
     payload = {
         "id64": 123,
         "stations": [
@@ -81,7 +81,7 @@ def test_parse_system_stations_maps_mega_ships_to_starports() -> None:
 
     result = parse_system_stations(payload)
 
-    assert result.stations[0].station_type == "Starport (Mega ship)"
+    assert result.stations[0].station_type == "Mega ship"
 
 
 def test_parse_system_factions_reads_active_states() -> None:

@@ -45,20 +45,6 @@ def _mapping(value: object, label: str) -> Mapping[str, object]:
     return value
 
 
-def _display_station_type(raw_type: str) -> str:
-    normalized = raw_type.casefold()
-    if "starport" in normalized or normalized in {"asteroid base", "mega ship"}:
-        return f"Starport ({raw_type})"
-    if normalized == "outpost":
-        return "Outpost"
-    if any(
-        marker in normalized
-        for marker in ("planetary", "surface", "settlement", "planet station")
-    ):
-        return f"Surface Port ({raw_type})"
-    return raw_type
-
-
 def parse_system_stations(payload: object) -> EdsmSystemStations:
     root = _mapping(payload, "stations response")
     id64 = root.get("id64")
@@ -87,7 +73,7 @@ def parse_system_stations(payload: object) -> EdsmSystemStations:
         stations.append(
             EdsmStation(
                 name=name,
-                station_type=_display_station_type(station_type),
+                station_type=station_type,
                 controlling_faction=controlling_faction,
             )
         )

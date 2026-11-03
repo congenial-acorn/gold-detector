@@ -80,6 +80,19 @@ class DiscordMessenger:
             return True
 
         station_type_lower = station_type.lower()
+        if station_type_lower in {
+            "dodec",
+            "asteroid base",
+            "mega ship",
+            "civilian mega ship",
+        }:
+            station_type_lower = "starport"
+        if any(
+            marker in station_type_lower
+            for marker in ("planetary", "surface", "settlement", "planet station")
+        ):
+            station_type_lower = "surface port"
+
         for pref in station_type_prefs:
             pref_lower = pref.lower()
             if (
