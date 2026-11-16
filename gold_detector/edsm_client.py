@@ -95,14 +95,15 @@ def parse_system_factions(payload: object) -> EdsmSystemFactions:
             continue
 
         active_states: list[str] = []
-        raw_states = faction.get("activeStates", [])
-        if isinstance(raw_states, list):
-            for raw_state in raw_states:
-                if not isinstance(raw_state, Mapping):
-                    continue
-                state = raw_state.get("state")
-                if isinstance(state, str):
-                    active_states.append(state)
+        raw_states = faction.get("activeStates")
+        if not isinstance(raw_states, list):
+            raise EdsmDataError("EDSM faction is missing active states")
+        for raw_state in raw_states:
+            state_entry = _mapping(raw_state, "active state")
+            state = state_entry.get("state")
+            if not isinstance(state, str):
+                raise EdsmDataError("EDSM active state is missing state name")
+            active_states.append(state)
 
         factions.append(EdsmFaction(name=name, active_states=tuple(active_states)))
 

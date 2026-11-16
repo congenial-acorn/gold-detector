@@ -452,6 +452,10 @@ class DiscordMessenger:
 
                         if "metals" in station_data:
                             for metal, metal_data in station_data["metals"].items():
+                                if not market_db.is_market_alert_eligible(
+                                    system_name, station_name, metal
+                                ):
+                                    continue
                                 stock = metal_data.get("stock", 0)
 
                                 candidate_count += 1
@@ -600,6 +604,10 @@ class DiscordMessenger:
 
                         if "metals" in station_data:
                             for metal, metal_data in station_data["metals"].items():
+                                if not market_db.is_market_alert_eligible(
+                                    system_name, station_name, metal
+                                ):
+                                    continue
                                 stock = metal_data.get("stock", 0)
 
                                 # Check preferences at data level

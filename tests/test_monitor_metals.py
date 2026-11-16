@@ -14,6 +14,13 @@ class StopMonitoring(Exception):
     """Raised to break out of the monitor loop during tests."""
 
 
+@pytest.fixture(autouse=True)
+def active_station_owner(monkeypatch):
+    monkeypatch.setattr(
+        monitor, "_station_faction_state", lambda *args: ("Owner", True)
+    )
+
+
 HTML_TEMPLATE = """
 <html>
   <body>
@@ -58,6 +65,7 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
     from gold_detector.market_database import MarketDatabase
 
     mock_db = Mock(spec=MarketDatabase)
+    mock_db.tracked_market_urls.return_value = []
     clear_station_cache = Mock()
     monkeypatch.setattr(
         monitor, "clear_station_cache", clear_station_cache, raising=False
@@ -102,6 +110,9 @@ def test_monitor_metals_writes_to_market_database(monkeypatch, tmp_path):
         url="https://inara.cz/elite/station-market/123/",
         metal="Gold",
         stock=20000,
+        price=29000,
+        owner="Owner",
+        infrastructure_failure=True,
     )
     mock_db.end_scan.assert_called_once()
     # end_scan receives active opportunity tuples, not scanned system names
@@ -117,6 +128,7 @@ def test_station_type_failure_preserves_market_alert_and_refreshes_powerplay(
     from unittest.mock import Mock
 
     mock_db = Mock()
+    mock_db.tracked_market_urls.return_value = []
 
     class FakeResponse:
         text = HTML_TEMPLATE
@@ -167,6 +179,9 @@ def test_station_type_failure_preserves_market_alert_and_refreshes_powerplay(
         url="https://inara.cz/elite/station-market/123/",
         metal="Gold",
         stock=20000,
+        price=29000,
+        owner="Owner",
+        infrastructure_failure=True,
     )
     assert mock_db.end_scan.call_args.args[0] == {
         ("Example System", "Example Station", "Gold")
@@ -209,6 +224,7 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
     from gold_detector.market_database import MarketDatabase
 
     mock_db = Mock(spec=MarketDatabase)
+    mock_db.tracked_market_urls.return_value = []
 
     class FakeResponse:
         text = HTML_SILVER_TEMPLATE
@@ -246,6 +262,9 @@ def test_monitor_metals_detects_silver(monkeypatch, tmp_path):
         url="https://inara.cz/elite/station-market/789/",
         metal="Silver",
         stock=52000,
+        price=35000,
+        owner="Owner",
+        infrastructure_failure=True,
     )
     mock_db.end_scan.assert_called_once()
     call_args = mock_db.end_scan.call_args
@@ -286,6 +305,7 @@ def test_monitor_uses_per_commodity_thresholds_lower(monkeypatch):
     from gold_detector.market_database import MarketDatabase
 
     mock_db = Mock(spec=MarketDatabase)
+    mock_db.tracked_market_urls.return_value = []
 
     custom_gold = Commodity(
         name="Gold",
@@ -349,15 +369,15 @@ HTML_HIGH_THRESHOLD = """
 """
 
 
-def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
-    """Monitor should NOT write entry when price/stock fall below a custom *higher* threshold
-    even though they exceed the default 28k/15k."""
+def test_monitor_records_observations_below_alert_thresholds(monkeypatch):
+    """Below-threshold observations must still reach lifecycle tracking."""
     from unittest.mock import Mock
 
     from gold_detector.commodities import Commodity
     from gold_detector.market_database import MarketDatabase
 
     mock_db = Mock(spec=MarketDatabase)
+    mock_db.tracked_market_urls.return_value = []
 
     custom_gold = Commodity(
         name="Gold",
@@ -394,7 +414,9 @@ def test_monitor_uses_per_commodity_thresholds_higher(monkeypatch):
             market_db=mock_db,
         )
 
-    mock_db.write_market_entry.assert_not_called()
+    mock_db.write_market_entry.assert_called_once()
+    assert mock_db.write_market_entry.call_args.kwargs["price"] == 29000
+    assert mock_db.end_scan.call_args.args[0] == set()
     # Non-threshold commodity must NOT appear in active opportunities
     call_args = mock_db.end_scan.call_args
     assert call_args[0][0] == set()
@@ -411,6 +433,7 @@ def test_monitor_skips_prune_when_list_page_fails(monkeypatch):
     from gold_detector.market_database import MarketDatabase
 
     mock_db = Mock(spec=MarketDatabase)
+    mock_db.tracked_market_urls.return_value = []
 
     monkeypatch.setattr(monitor, "http_get", lambda url: None)
     monkeypatch.setattr(

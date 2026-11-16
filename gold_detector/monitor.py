@@ -8,7 +8,15 @@ from bs4 import BeautifulSoup, Tag
 from requests import RequestException
 
 from gold_detector.commodities import get_commodity
-from gold_detector.edsm_client import EdsmDataError, clear_station_cache, get_station_type
+from gold_detector.edsm_client import (
+    EdsmDataError,
+    EdsmSystemFactions,
+    clear_station_cache,
+    fetch_system_factions,
+    fetch_system_stations,
+    find_station,
+    get_station_type,
+)
 from gold_detector.emitter import emit_loop_done
 from gold_detector.http_client import http_get
 from gold_detector.inara_client import get_station_market_urls
@@ -49,11 +57,39 @@ def _extract_price_and_stock(row):
     if len(cells) < 5:
         return None, None
     try:
-        buy_price = int(cells[3].get("data-order") or "0")
-        stock = int(cells[4].get("data-order") or "0")
+        buy_price = int(cells[3].get("data-order"))
+        stock = int(cells[4].get("data-order"))
     except (TypeError, ValueError):
         return None, None
     return buy_price, stock
+
+
+def _station_faction_state(
+    system_name: str,
+    station_name: str,
+    factions: dict[str, EdsmSystemFactions],
+) -> tuple[str | None, bool | None]:
+    """Return explicit owner state; unknown evidence must not close an episode."""
+    try:
+        station = find_station(fetch_system_stations(system_name), station_name)
+        if station is None or station.controlling_faction is None:
+            return None, None
+        if system_name not in factions:
+            factions[system_name] = fetch_system_factions(system_name)
+        owner = station.controlling_faction
+        for faction in factions[system_name].factions:
+            if faction.name.casefold() == owner.casefold():
+                return owner, any(
+                    state.casefold() == "infrastructure failure"
+                    for state in faction.active_states
+                )
+        return owner, None
+    except (EdsmDataError, RequestException):
+        logger.warning(
+            "Faction lookup failed for %s in %s", station_name, system_name,
+            exc_info=True,
+        )
+        return None, None
 
 
 def _update_systems(
@@ -78,6 +114,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
             systems: Dict[tuple[str, str], List[str]] = {}
             logger.info("=== Beginning new scan cycle ===")
             clear_station_cache()
+            factions: dict[str, EdsmSystemFactions] = {}
 
             # Begin scan if using database
             if market_db:
@@ -92,6 +129,10 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
             failed_urls: set[str] = set()
             current_opportunities: set[tuple[str, str, str]] = set()
             market_urls, failed_near_urls = get_station_market_urls(near_urls)
+            if market_db:
+                market_urls = list(
+                    dict.fromkeys(market_urls + market_db.tracked_market_urls())
+                )
 
             stations_checked = 0
 
@@ -108,6 +149,17 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                     stations_checked += 1
 
                     scanned_systems.add(system_name)
+                    owner, infrastructure_failure = _station_faction_state(
+                        system_name, st_name, factions
+                    )
+                    try:
+                        st_type = get_station_type(system_name, st_name)
+                    except (EdsmDataError, RequestException):
+                        logger.warning(
+                            "EDSM station type lookup failed for %s in %s",
+                            st_name, system_name, exc_info=True,
+                        )
+                        st_type = "Unknown"
 
                     for metal in metals:
                         link = soup.find("a", string=metal)
@@ -122,7 +174,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                             continue
 
                         buy_price, stock = _extract_price_and_stock(row)
-                        if buy_price is None or stock is None:
+                        if buy_price is None or stock is None or buy_price <= 0:
                             logger.warning(
                                 "Non-numeric price/stock for %s at %s; skipping entry",
                                 metal,
@@ -139,49 +191,31 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                         )
 
                         commodity = get_commodity(metal)
+                        eligible = infrastructure_failure is True
+                        if market_db:
+                            eligible = market_db.write_market_entry(
+                                system_name=system_name,
+                                system_address=system_address,
+                                station_name=st_name,
+                                station_type=st_type,
+                                url=url,
+                                metal=metal,
+                                stock=stock,
+                                price=buy_price,
+                                owner=owner,
+                                infrastructure_failure=infrastructure_failure,
+                            )
                         if (
-                            buy_price > commodity.price_threshold
+                            eligible
+                            and buy_price > commodity.price_threshold
                             and stock > commodity.stock_threshold
                         ):
                             _update_systems(systems, system_name, system_address, metal)
-                            try:
-                                st_type = get_station_type(system_name, st_name)
-                            except (EdsmDataError, RequestException) as exc:
-                                logger.warning(
-                                    "EDSM station type lookup failed for %s in %s; "
-                                    "using Unknown: %s",
-                                    st_name,
-                                    system_name,
-                                    exc,
-                                )
-                                st_type = "Unknown"
                             current_opportunities.add((system_name, st_name, metal))
-
-                            if market_db:
-                                market_db.write_market_entry(
-                                    system_name=system_name,
-                                    system_address=system_address,
-                                    station_name=st_name,
-                                    station_type=st_type,
-                                    url=url,
-                                    metal=metal,
-                                    stock=stock,
-                                )
-                                logger.info(
-                                    "Found: %s @ %s - price=%s, stock=%s",
-                                    metal,
-                                    st_name,
-                                    buy_price,
-                                    stock,
-                                )
-                            else:
-                                logger.info(
-                                    "Found: %s @ %s - price=%s, stock=%s",
-                                    metal,
-                                    st_name,
-                                    buy_price,
-                                    stock,
-                                )
+                            logger.info(
+                                "Found: %s @ %s - price=%s, stock=%s",
+                                metal, st_name, buy_price, stock,
+                            )
                 except Exception as exc:  # noqa: BLE001
                     logger.error(
                         "Error processing station %s: %s", url, exc, exc_info=True

@@ -110,6 +110,12 @@ def test_parse_system_stations_rejects_missing_id64() -> None:
         parse_system_stations({"stations": []})
 
 
+@pytest.mark.parametrize("states", [None, [{"state": None}], ["Infrastructure Failure"]])
+def test_parse_factions_rejects_unknown_active_state_evidence(states) -> None:
+    with pytest.raises(EdsmDataError):
+        parse_system_factions({"factions": [{"name": "Owner", "activeStates": states}]})
+
+
 def test_fetch_system_factions_refreshes_each_call(monkeypatch) -> None:
     calls: list[str] = []
 

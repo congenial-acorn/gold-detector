@@ -51,7 +51,7 @@ In addition, you can use this cheap gold to earn merits by selling it in an acqu
 - **DM & Server Alerts** — Get alerts via direct message, server channel, or both
 - **Customizable Filters** — Filter by station type, commodity, or PowerPlay faction
 - **Per-Server Configuration** — Custom channels, roles, ping control, and opt-out
-- **Opportunity Lifecycle** — Alerts fire once per recipient while a hidden market remains active, then can fire again if the opportunity expires and later reappears.
+- **Opportunity Lifecycle** — Alerts fire once per recipient during an Infrastructure Failure episode. Once reduced prices expose a market, normal prices returning cannot trigger another alert while faction data is stale. Episodes are removed only after the owning faction no longer reports Infrastructure Failure and market prices are normal. Existing database records keep their delivery history and require fresh observations before further alerts.
 
 ## Preferences
 

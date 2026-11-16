@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import cast, final
 
 import discord
+import pytest
+
+from gold_detector import edsm_client, monitor
 
 from gold_detector.bgs_states import (
     BgsFetcher,
@@ -95,6 +98,9 @@ def _build_scenario(
         url="https://inara.cz/elite/station-market/5894/",
         metal="Gold",
         stock=25000,
+        price=29000,
+        owner="Owner",
+        infrastructure_failure=True,
     )
     channel = FakeChannel()
     guild = FakeGuild(channel)
@@ -202,5 +208,92 @@ def test_dispatch_sends_market_alert_when_bgs_enrichment_fails(tmp_path: Path) -
             + "(Coriolis Starport) - Gold stock: 25,000"
         )
         assert channel.sent_messages == [expected_message]
+
+    asyncio.run(run_scenario())
+
+
+def test_scan_tracks_exposure_outside_discovery_and_suppresses_new_recipients(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    class StopScan(Exception):
+        pass
+
+    async def no_warnings(queries: Sequence[SystemBgsQuery]) -> SystemStationWarnings:
+        return {}
+
+    messenger, db, channel = _build_scenario(tmp_path, no_warnings)
+    price = 2900
+    active_states = [{"state": "Infrastructure Failure"}]
+
+    def market_response(url: str) -> SimpleNamespace:
+        return SimpleNamespace(text=f"""
+            <h2><a href="/elite/station/5894/">Hale Orbital</a>
+            <a href="/elite/system/3207/">Albarib</a></h2>
+            <table><tr><td></td><td></td><td><a>Gold</a></td>
+            <td data-order="{price}"></td><td data-order="25000"></td></tr></table>
+        """)
+
+    def edsm_response(url: str) -> SimpleNamespace:
+        payload = (
+            {"factions": [{"name": "Owner", "activeStates": active_states}]}
+            if "factions" in url
+            else {
+                "id64": 123,
+                "stations": [{
+                    "name": "Hale Orbital", "type": "Coriolis Starport",
+                    "controllingFaction": {"name": "Owner"},
+                }],
+            }
+        )
+        return SimpleNamespace(json=lambda: payload)
+
+    def stop_scan(seconds: float) -> None:
+        raise StopScan
+
+    monkeypatch.setattr(monitor, "get_station_market_urls", lambda urls: ([], set()))
+    monkeypatch.setattr(monitor, "http_get", market_response)
+    monkeypatch.setattr(edsm_client, "http_get", edsm_response)
+    monkeypatch.setattr(monitor, "get_powerplay_status", lambda *args, **kwargs: set())
+    monkeypatch.setattr(monitor, "emit_loop_done", lambda: None)
+    monkeypatch.setattr(monitor.time, "sleep", stop_scan)
+
+    def scan() -> None:
+        with pytest.raises(StopScan):
+            monitor.monitor_metals([], ["Gold"], db)
+
+    async def run_scenario() -> None:
+        await messenger.dispatch_from_database(db)
+        assert len(channel.sent_messages) == 1
+        scan()  # Tracked URL remains observable despite empty discovery.
+        assert db.read_all_entries()["Albarib"]["stations"]["Hale Orbital"]["metals"][
+            "Gold"
+        ]["lifecycle"]["state"] == "exposed"
+        new_channel = FakeChannel()
+        new_guild = FakeGuild(new_channel)
+        new_guild.id = 789
+        monkeypatch.setattr(
+            messenger.client, "guilds",
+            [*messenger.client.guilds, new_guild],
+        )
+        messenger.subscribers.add(456)
+
+        async def fetch_user(user_id: int) -> FakeChannel:
+            return new_channel
+
+        monkeypatch.setattr(messenger.client, "fetch_user", fetch_user, raising=False)
+        await messenger.dispatch_from_database(db)
+        assert new_channel.sent_messages == []
+
+        nonlocal price, active_states
+        price = 29000
+        scan()
+        await messenger.dispatch_from_database(db)
+        assert new_channel.sent_messages == []
+        active_states = []
+        scan()
+        assert db.read_all_entries() == {}
+        assert len(channel.sent_messages) == 1
 
     asyncio.run(run_scenario())

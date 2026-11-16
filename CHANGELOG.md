@@ -1,3 +1,13 @@
+## [1.11.0] - 2026-11-16
+
+### Fixed
+- **False alerts from stale faction states**: Once a market has been exposed by reduced prices, a return to normal prices no longer triggers another hidden-market alert while faction data still reports Infrastructure Failure.
+
+### Changed
+- **Persistent market lifecycle**: The database now tracks hidden, exposed, and ended-pending-sync markets across scans and restarts. Tracked stations remain monitored even after disappearing from discovery results. Records are purged only when the owning faction no longer reports Infrastructure Failure and market prices are normal.
+- **Existing database migration**: Existing records retain their server and DM delivery history and require fresh market and faction observations before further alerts.
+- **Alert eligibility**: Low stock, failed fetches, and missing or malformed observations no longer erase episode history. Both server and DM alerts require a currently eligible hidden market.
+
 ## [1.10.2]
 
 ### Fixed

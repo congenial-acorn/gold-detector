@@ -6,8 +6,25 @@ import copy
 import json
 import logging
 import threading
+import time
+from uuid import uuid4
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict, cast
+
+from .commodities import get_commodity
+
+
+class MarketLifecycle(TypedDict):
+    state: Literal["hidden", "exposed", "ended_pending_sync", "ended"]
+    episode_id: str
+    eligible: bool
+    price: int | None
+    owner: str | None
+    infrastructure_failure: bool | None
+    market_observed_at: float | None
+    faction_observed_at: float | None
+    exposed_at: float | None
+    state_changed_at: float | None
 
 
 class SentToMap(TypedDict):
@@ -18,6 +35,7 @@ class SentToMap(TypedDict):
 class MetalEntry(TypedDict):
     stock: int
     sent_to: SentToMap
+    lifecycle: MarketLifecycle
 
 
 class PowerplayEntry(TypedDict):
@@ -111,9 +129,28 @@ class MarketDatabase:
     def _empty_sent_to() -> SentToMap:
         return {"guild": {}, "user": {}}
 
+    @staticmethod
+    def _new_lifecycle() -> MarketLifecycle:
+        return {
+            "state": "hidden",
+            "episode_id": uuid4().hex,
+            "eligible": False,
+            "price": None,
+            "owner": None,
+            "infrastructure_failure": None,
+            "market_observed_at": None,
+            "faction_observed_at": None,
+            "exposed_at": None,
+            "state_changed_at": None,
+        }
+
     def _normalize_metal_entry(self, metal_data: object) -> MetalEntry:
         if not isinstance(metal_data, dict):
-            return {"stock": 0, "sent_to": self._empty_sent_to()}
+            return {
+                "stock": 0,
+                "sent_to": self._empty_sent_to(),
+                "lifecycle": self._new_lifecycle(),
+            }
 
         metal_dict = cast(JsonDict, metal_data)
         sent_to = metal_dict.get("sent_to")
@@ -133,6 +170,11 @@ class MarketDatabase:
         return {
             "stock": self._coerce_int(metal_dict.get("stock", 0)),
             "sent_to": normalized_sent_to,
+            "lifecycle": (
+                cast(MarketLifecycle, metal_dict["lifecycle"])
+                if "lifecycle" in metal_dict
+                else self._new_lifecycle()
+            ),
         }
 
     @staticmethod
@@ -171,6 +213,14 @@ class MarketDatabase:
 
                     legacy_metal = cast(JsonDict, cast(object, metal_data))
 
+                    if "lifecycle" not in legacy_metal:
+                        legacy_metal["lifecycle"] = normalized["lifecycle"]
+                        changed = True
+                    elif normalized["lifecycle"]["eligible"]:
+                        # A restart must await a fresh scan before dispatch.
+                        normalized["lifecycle"]["eligible"] = False
+                        changed = True
+
                     if "cooldowns" in legacy_metal:
                         del legacy_metal["cooldowns"]
                         changed = True
@@ -203,12 +253,16 @@ class MarketDatabase:
         url: str,
         metal: str,
         stock: int,
-    ) -> None:
+        *,
+        price: int | None = None,
+        owner: str | None = None,
+        infrastructure_failure: bool | None = None,
+    ) -> bool:
         """
         Write or update a market entry for a station's metal stock.
 
-        Creates system/station/metal hierarchy as needed. Preserves existing
-        cooldown data when updating stock.
+        Preserve episode history and delivery flags. Return alert eligibility.
+        Calls without observations create unverified legacy candidates.
 
         Args:
             system_name: Name of the system
@@ -221,6 +275,15 @@ class MarketDatabase:
         """
         with self._lock:
             data = self._data
+            system = data.get(system_name)
+            station = (
+                system.get("stations", {}).get(station_name) if system else None
+            )
+            existing_metal = station.get("metals", {}).get(metal) if station else None
+            if existing_metal is None and price is not None:
+                # Discovery alone is insufficient evidence of a new episode.
+                if infrastructure_failure is not True or price <= 0:
+                    return False
 
             # Ensure system exists
             if system_name not in data:
@@ -252,20 +315,86 @@ class MarketDatabase:
             if "metals" not in data[system_name]["stations"][station_name]:
                 data[system_name]["stations"][station_name]["metals"] = {}
 
-            existing_sent_to = self._empty_sent_to()
-            existing_metal = data[system_name]["stations"][station_name]["metals"].get(
-                metal
+            entry: MetalEntry = (
+                self._normalize_metal_entry(existing_metal)
+                if existing_metal is not None
+                else {
+                    "stock": stock,
+                    "sent_to": self._empty_sent_to(),
+                    "lifecycle": self._new_lifecycle(),
+                }
             )
-            if existing_metal is not None:
-                existing_sent_to = self._normalize_metal_entry(existing_metal)[
-                    "sent_to"
-                ]
-
-            data[system_name]["stations"][station_name]["metals"][metal] = {
-                "stock": stock,
-                "sent_to": existing_sent_to,
-            }
+            entry["stock"] = stock
+            lifecycle = entry["lifecycle"]
+            lifecycle["eligible"] = False
+            if price is not None and price > 0:
+                now = time.time()
+                commodity = get_commodity(metal)
+                normal_price = price > commodity.price_threshold
+                previous_state = lifecycle["state"]
+                lifecycle["price"] = price
+                lifecycle["market_observed_at"] = now
+                if infrastructure_failure is not None:
+                    lifecycle["owner"] = owner
+                    lifecycle["infrastructure_failure"] = infrastructure_failure
+                    lifecycle["faction_observed_at"] = now
+                if infrastructure_failure is False and normal_price:
+                    lifecycle["state"] = "ended"
+                elif infrastructure_failure is False or (
+                    normal_price and previous_state != "hidden"
+                ):
+                    lifecycle["state"] = "ended_pending_sync"
+                elif not normal_price:
+                    lifecycle["state"] = "exposed"
+                    if lifecycle["exposed_at"] is None:
+                        lifecycle["exposed_at"] = now
+                if lifecycle["state"] != previous_state:
+                    lifecycle["state_changed_at"] = now
+                lifecycle["eligible"] = (
+                    lifecycle["state"] == "hidden"
+                    and infrastructure_failure is True
+                    and normal_price
+                    and stock > commodity.stock_threshold
+                )
+            data[system_name]["stations"][station_name]["metals"][metal] = entry
+            if lifecycle["state"] == "ended":
+                station = data[system_name]["stations"][station_name]
+                del station["metals"][metal]
+                if not station["metals"]:
+                    del data[system_name]["stations"][station_name]
+                if not data[system_name]["stations"] and not data[system_name].get(
+                    "powerplay"
+                ):
+                    del data[system_name]
             self._save_locked()
+            return lifecycle["eligible"]
+
+    def tracked_market_urls(self) -> list[str]:
+        """Keep observing episodes even after they disappear from discovery."""
+        with self._lock:
+            return list(
+                dict.fromkeys(
+                    station["url"]
+                    for system in self._data.values()
+                    for station in system.get("stations", {}).values()
+                    if station.get("metals")
+                )
+            )
+
+    def is_market_alert_eligible(
+        self, system_name: str, station_name: str, metal: str
+    ) -> bool:
+        with self._lock:
+            system = self._data.get(system_name)
+            station = (
+                system.get("stations", {}).get(station_name) if system else None
+            )
+            entry = station.get("metals", {}).get(metal) if station else None
+            return (
+                not self._scan_in_progress
+                and entry is not None
+                and entry["lifecycle"]["eligible"]
+            )
 
     def write_powerplay_entry(
         self,
@@ -426,15 +555,10 @@ class MarketDatabase:
         failed_urls: set[str] | None = None,
         failed_powerplay_systems: set[str] | None = None,
     ) -> None:
-        """Prune inactive opportunities and optionally stale powerplay blocks.
+        """Prune empty containers and stale PowerPlay blocks.
 
-        Metals are pruned when absent from current_opportunities, except for
-        stations whose URL is in failed_urls (the fetch errored this cycle —
-        HTTP failure, parse failure). Those get a one-scan grace period so a
-        transient error does not wipe sent_to state and trigger duplicate
-        alerts on the next successful scan.
-
-        When failed_urls is None, no station gets grace.
+        Market episodes survive missing discovery, low stock and failed fetches.
+        Only explicit synchronized end observations remove them.
         """
         with self._lock:
             data = self._data
@@ -446,19 +570,8 @@ class MarketDatabase:
                     station_data = stations[station_name]
                     metals = station_data.get("metals", {})
 
-                    station_url = station_data.get("url")
-                    station_failed = (
-                        failed_urls is not None and station_url in failed_urls
-                    )
-
                     for metal in list(metals.keys()):
-                        if (
-                            system_name,
-                            station_name,
-                            metal,
-                        ) in current_opportunities:
-                            continue
-                        if station_failed:
+                        if metals[metal]["lifecycle"]["state"] != "ended":
                             continue
                         del metals[metal]
 
@@ -489,6 +602,10 @@ class MarketDatabase:
         """
         with self._lock:
             self._scan_in_progress = True
+            for system in self._data.values():
+                for station in system.get("stations", {}).values():
+                    for entry in station.get("metals", {}).values():
+                        entry["lifecycle"]["eligible"] = False
 
     def end_scan(
         self,

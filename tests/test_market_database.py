@@ -73,15 +73,20 @@ def test_init_migrates_legacy_cooldowns_from_metals_and_powerplay(db_path):
     data = migrated.read_all_entries()
 
     assert_no_cooldowns(data)
-    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"] == {
+    metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+    assert {key: metals["Gold"][key] for key in ("stock", "sent_to")} == {
         "stock": 25000,
         "sent_to": {"guild": {}, "user": {}},
     }
-    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Silver"] == {
+    assert {key: metals["Silver"][key] for key in ("stock", "sent_to")} == {
         "stock": 50000,
         "sent_to": {"guild": {"2": True}, "user": {}},
     }
     assert "cooldowns" not in load_data(db_path)["Sol"]["powerplay"]
+    assert metals["Silver"]["lifecycle"]["state"] == "hidden"
+    assert not migrated.is_market_alert_eligible("Sol", "Abraham Lincoln", "Silver")
+    reloaded = MarketDatabase(db_path)
+    assert reloaded.read_all_entries() == data
 
 
 def test_init_and_prune_tolerate_missing_stations_and_metals_keys(db_path):
@@ -123,7 +128,8 @@ def test_init_and_prune_tolerate_missing_stations_and_metals_keys(db_path):
 
     migrated.prune_stale(current_opportunities=set(), current_powerplay_systems=set())
     data = migrated.read_all_entries()
-    assert data == {}
+    assert set(data) == {"LiveSystem"}
+    assert not migrated.is_market_alert_eligible("LiveSystem", "Abraham Lincoln", "Gold")
 
 
 def test_write_market_entry_preserves_existing_sent_to_and_initializes_new(db, db_path):
@@ -163,11 +169,12 @@ def test_write_market_entry_preserves_existing_sent_to_and_initializes_new(db, d
     )
 
     data = load_data(db_path)
-    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"] == {
+    metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
+    assert {key: metals["Gold"][key] for key in ("stock", "sent_to")} == {
         "stock": 30000,
         "sent_to": {"guild": {"123": True}, "user": {"456": True}},
     }
-    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Silver"] == {
+    assert {key: metals["Silver"][key] for key in ("stock", "sent_to")} == {
         "stock": 60000,
         "sent_to": {"guild": {}, "user": {}},
     }
@@ -207,6 +214,49 @@ def test_write_powerplay_entry_never_writes_or_preserves_cooldowns(db_path):
         "progress": "80%",
         "commodity_urls": "links",
     }
+
+
+@pytest.mark.parametrize("faction_updates_first", [False, True])
+def test_exposed_episode_stays_suppressed_until_both_sources_clear(
+    db_path, faction_updates_first
+):
+    db = MarketDatabase(db_path)
+
+    def observe(price: int, active: bool | None, stock: int = 25000) -> bool:
+        return db.write_market_entry(
+            "Sol", "system", "Station", "Outpost", "market", "Gold", stock,
+            price=price, owner="Owner", infrastructure_failure=active,
+        )
+
+    assert observe(29000, True)
+    db.mark_market_alerts_sent_batch([("Sol", "Station", "Gold", "guild", "1")])
+    episode = db.read_all_entries()["Sol"]["stations"]["Station"]["metals"]["Gold"][
+        "lifecycle"
+    ]["episode_id"]
+    assert not observe(29000, True, stock=1)
+    assert observe(29000, True)
+    assert not observe(2900, True)
+    db.end_scan(set(), set())
+    db = MarketDatabase(db_path)
+    assert not observe(29000, None)
+    assert not observe(0, False)
+    assert not observe(2900 if faction_updates_first else 29000, not faction_updates_first)
+    assert not observe(29000, True)
+    entry = db.read_all_entries()["Sol"]["stations"]["Station"]["metals"]["Gold"]
+    assert entry["lifecycle"]["state"] == "ended_pending_sync"
+    assert entry["lifecycle"]["episode_id"] == episode
+    assert entry["sent_to"]["guild"] == {"1": True}
+    db.write_powerplay_entry("Sol", "system", "Power", "Stronghold", "50%")
+
+    assert not observe(29000, False)
+    assert db.read_all_entries()["Sol"]["stations"] == {}
+    assert db.read_all_entries()["Sol"]["powerplay"]["status"] == "Stronghold"
+    assert not observe(29000, False)  # Stale discovery cannot recreate the record.
+    assert observe(29000, True)
+    assert not db.has_market_alert_been_sent("Sol", "Station", "Gold", "guild", "1")
+    assert db.read_all_entries()["Sol"]["stations"]["Station"]["metals"]["Gold"][
+        "lifecycle"
+    ]["episode_id"] != episode
 
 
 def test_mark_market_alerts_sent_batch_and_has_market_alert_been_sent(db, db_path):
@@ -262,7 +312,7 @@ def test_mark_market_alerts_sent_batch_and_has_market_alert_been_sent(db, db_pat
     )
 
 
-def test_prune_stale_removes_only_absent_opportunities_and_cascades_empty_containers(
+def test_prune_stale_preserves_unresolved_episodes_and_delivery_history(
     db, db_path
 ):
     db.write_market_entry(
@@ -304,12 +354,10 @@ def test_prune_stale_removes_only_absent_opportunities_and_cascades_empty_contai
 
     data = load_data(db_path)
     metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
-    assert "Gold" not in metals
-    assert metals["Silver"] == {
-        "stock": 60000,
-        "sent_to": {"guild": {}, "user": {"456": True}},
-    }
-    assert "Alpha Centauri" not in data
+    assert set(metals) == {"Gold", "Silver"}
+    assert metals["Gold"]["sent_to"] == {"guild": {"123": True}, "user": {}}
+    assert metals["Silver"]["sent_to"] == {"guild": {}, "user": {"456": True}}
+    assert "Alpha Centauri" in data
 
 
 def test_prune_stale_removes_powerplay_for_absent_systems_but_preserves_stations(
@@ -393,7 +441,7 @@ def test_prune_stale_keeps_metals_when_station_fetch_errored(db, db_path):
     assert metals["Gold"]["sent_to"] == {"guild": {"1": True}, "user": {}}
 
 
-def test_prune_stale_prunes_metals_when_no_error_and_below_threshold(db, db_path):
+def test_prune_stale_keeps_metals_when_no_error_and_below_threshold(db, db_path):
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
@@ -417,11 +465,11 @@ def test_prune_stale_prunes_metals_when_no_error_and_below_threshold(db, db_path
 
     data = load_data(db_path)
     metals = data["Sol"]["stations"]["Abraham Lincoln"]["metals"]
-    assert "Gold" not in metals
+    assert "Gold" in metals
     assert "Silver" in metals
 
 
-def test_prune_stale_grace_on_error_then_prune_on_success(db, db_path):
+def test_prune_stale_preserves_history_after_fetch_recovers(db, db_path):
     db.write_market_entry(
         system_name="Sol",
         system_address="10477373803",
@@ -439,7 +487,9 @@ def test_prune_stale_grace_on_error_then_prune_on_success(db, db_path):
 
     db.prune_stale(set(), failed_urls=set())
     data = load_data(db_path)
-    assert "Sol" not in data
+    assert data["Sol"]["stations"]["Abraham Lincoln"]["metals"]["Gold"]["sent_to"] == {
+        "guild": {"1": True}, "user": {}
+    }
 
 
 def test_end_scan_forwards_failed_urls_for_grace_period(db, db_path):
@@ -527,7 +577,8 @@ def test_end_scan_uses_opportunity_and_powerplay_sets(db, db_path):
 
     data = load_data(db_path)
     assert "Sol" in data
-    assert "Alpha Centauri" not in data
+    assert "Alpha Centauri" in data
+    assert "powerplay" not in data["Alpha Centauri"]
     assert data["Sol"]["powerplay"]["power"] == "Zachary Hudson"
 
 
