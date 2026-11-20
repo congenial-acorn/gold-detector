@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from gold_detector.http_client import http_get
 
@@ -119,7 +120,8 @@ def fetch_system_stations(system_name: str) -> EdsmSystemStations:
 
 
 def fetch_system_factions(system_name: str) -> EdsmSystemFactions:
-    query = urlencode({"systemName": system_name})
+    # EDSM's edge caches can serve different stale faction snapshots.
+    query = urlencode({"systemName": system_name, "_refresh": uuid4().hex})
     response = http_get(f"{EDSM_FACTIONS_URL}?{query}")
     payload: object = response.json()
     return parse_system_factions(payload)

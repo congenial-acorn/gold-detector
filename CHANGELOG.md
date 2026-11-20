@@ -1,3 +1,11 @@
+## [1.11.1] - 2026-11-19
+
+### Fixed
+- Fixed duplicate alerts caused by inconsistent API data.
+
+### Changed
+- Changed API request structure to avoid stale caches.
+
 ## [1.11.0] - 2026-11-16
 
 ### Fixed

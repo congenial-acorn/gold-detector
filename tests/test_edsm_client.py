@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -110,7 +111,9 @@ def test_parse_system_stations_rejects_missing_id64() -> None:
         parse_system_stations({"stations": []})
 
 
-@pytest.mark.parametrize("states", [None, [{"state": None}], ["Infrastructure Failure"]])
+@pytest.mark.parametrize(
+    "states", [None, [{"state": None}], ["Infrastructure Failure"]]
+)
 def test_parse_factions_rejects_unknown_active_state_evidence(states) -> None:
     with pytest.raises(EdsmDataError):
         parse_system_factions({"factions": [{"name": "Owner", "activeStates": states}]})
@@ -130,7 +133,10 @@ def test_fetch_system_factions_refreshes_each_call(monkeypatch) -> None:
 
     monkeypatch.setattr("gold_detector.edsm_client.http_get", fake_get)
 
-    fetch_system_factions("Sol")
-    fetch_system_factions("Sol")
+    fetch_system_factions("HIP 51714")
+    fetch_system_factions("HIP 51714")
 
     assert len(calls) == 2
+    queries = [parse_qs(urlsplit(url).query) for url in calls]
+    assert all(query["systemName"] == ["HIP 51714"] for query in queries)
+    assert queries[0]["_refresh"] != queries[1]["_refresh"]
