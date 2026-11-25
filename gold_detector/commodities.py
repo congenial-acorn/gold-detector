@@ -42,9 +42,9 @@ class Commodity:
         price_threshold: Minimum buy price (CR/ton) for a station to be
             considered an alert-worthy opportunity.  Defaults to
             :data:`DEFAULT_PRICE_THRESHOLD`.
-        stock_threshold: Minimum stock (tons) for a station to be
-            considered an alert-worthy opportunity.  Defaults to
-            :data:`DEFAULT_STOCK_THRESHOLD`.
+        stock_threshold: Default minimum stock (tons) for an alert; recipients
+            may override it with the ``stock_threshold`` preference.
+            Defaults to :data:`DEFAULT_STOCK_THRESHOLD`.
         mask_text: Display text used when masking commodity URLs in
             Discord messages (e.g. ``"Sell gold here"``).
     """

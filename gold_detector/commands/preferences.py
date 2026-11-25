@@ -1,18 +1,29 @@
 from __future__ import annotations
 
-from typing import Iterable, Literal, Sequence
+from typing import Iterable, Literal, Optional, Sequence
 
 import discord
 from discord import app_commands
 
-from ..services import GuildPreferencesService, PREFERENCE_OPTIONS
+from ..commodities import commodity_names
+from ..services import (
+    GuildPreferencesService,
+    PREFERENCE_OPTIONS,
+    STOCK_THRESHOLD_KEY,
+)
 
 
 def _choices_for(category: str) -> Sequence[str]:
     return PREFERENCE_OPTIONS.get(category, ())
 
 
-CATEGORIES: tuple[str, ...] = tuple(PREFERENCE_OPTIONS.keys())
+CATEGORIES: tuple[str, ...] = (*PREFERENCE_OPTIONS.keys(), STOCK_THRESHOLD_KEY)
+
+
+def _format_preference(category: str, values) -> str:
+    if category == STOCK_THRESHOLD_KEY:
+        return ", ".join(f"{name} > {tons:,} t" for name, tons in values.items())
+    return ", ".join(values)
 
 
 class PreferencesGroup(app_commands.Group):
@@ -204,6 +215,49 @@ class PreferencesGroup(app_commands.Group):
     ):
         return self._autocomplete("powerplay", current)
 
+    @app_commands.command(
+        name="stock_threshold",
+        description="Set the minimum stock (tons) a commodity needs to trigger an alert.",
+    )
+    @app_commands.describe(
+        commodity="Commodity to configure",
+        tons="Alert only when stock is above this many tons (omit to reset to default)",
+        target="Apply to your user (default) or this server",
+    )
+    @app_commands.choices(
+        commodity=[
+            app_commands.Choice(name=name, value=name) for name in commodity_names()
+        ]
+    )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def stock_threshold(
+        self,
+        interaction: discord.Interaction,
+        commodity: app_commands.Choice[str],
+        tons: Optional[app_commands.Range[int, 0]] = None,
+        target: Literal["user", "server"] = "user",
+    ):
+        try:
+            scope, scope_id, scope_label = self._resolve_scope(
+                interaction, target, for_view=False
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        effective = self._prefs.set_stock_threshold(
+            scope, scope_id, commodity.value, tons
+        )
+        source = "custom" if tons is not None else "default"
+        await interaction.response.send_message(
+            (
+                f"Updated {scope_label} {commodity.value} stock threshold: alerts when "
+                f"stock is above {effective:,} tons ({source})."
+            ),
+            ephemeral=True,
+        )
+
     @app_commands.command(name="show", description="Show current preferences.")
     @app_commands.describe(
         target="Show preferences for your user (default) or this server",
@@ -231,7 +285,7 @@ class PreferencesGroup(app_commands.Group):
             return
 
         lines = [
-            f"{category.replace('_', ' ').title()}: {', '.join(values)}"
+            f"{category.replace('_', ' ').title()}: {_format_preference(category, values)}"
             for category, values in prefs.items()
             if values
         ]
@@ -298,6 +352,7 @@ class PreferencesGroup(app_commands.Group):
             app_commands.Choice(name="Station type", value="station_type"),
             app_commands.Choice(name="Commodity", value="commodity"),
             app_commands.Choice(name="Powerplay", value="powerplay"),
+            app_commands.Choice(name="Stock threshold", value=STOCK_THRESHOLD_KEY),
         ]
     )
     @app_commands.allowed_installs(guilds=True, users=True)
@@ -324,7 +379,7 @@ class PreferencesGroup(app_commands.Group):
             targets = (cat_value,)
 
         for cat in targets:
-            self._prefs.set_preferences(scope, scope_id, cat, [])
+            self._prefs.clear_category(scope, scope_id, cat)
 
         label = (
             "all preferences" if cat_value == "__all__" else cat_value.replace("_", " ")

@@ -210,11 +210,8 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
                                 owner=owner,
                                 infrastructure_failure=infrastructure_failure,
                             )
-                        if (
-                            eligible
-                            and buy_price > commodity.price_threshold
-                            and stock > commodity.stock_threshold
-                        ):
+                        # Stock is filtered per recipient at dispatch time.
+                        if eligible and buy_price > commodity.price_threshold:
                             _update_systems(systems, system_name, system_address, metal)
                             current_opportunities.add((system_name, st_name, metal))
                             logger.info(

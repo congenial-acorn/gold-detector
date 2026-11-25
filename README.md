@@ -45,7 +45,7 @@ In addition, you can use this cheap gold to earn merits by selling it in an acqu
 
 ## Features
 - **🔥 90% Off Markets** — When a station hits infrastructure failure, its prices plummet 90%. The bot finds the stations Inara *hasn't* updated yet — so the deal is still live and fully stocked.
-- **Hidden Market Detection** — Catches stations in infrastructure failure whose market data hasn't synced to Inara (price >28,000 CR). Gold and Palladium need over 15,000 tons in stock to trigger an alert; Silver needs over 50,000 tons.
+- **Hidden Market Detection** — Catches stations in infrastructure failure whose market data hasn't synced to Inara (price >28,000 CR). By default, Gold and Palladium need over 15,000 tons in stock to trigger an alert and Silver needs over 50,000 tons. You can change these per commodity with `/set_preferences stock_threshold`.
 - **Gold, Palladium & Silver** — Monitors all three commodities
 - **PowerPlay Integration** — Alerts for Fortified and Stronghold systems with merit-earning opportunities
 - **DM & Server Alerts** — Get alerts via direct message, server channel, or both
@@ -62,6 +62,7 @@ Want to filter your alerts? Use `/set_preferences` to choose station types, comm
 | Station Type | Starport, Outpost, Surface Port | `/set_preferences station_type Starport, Outpost` |
 | Commodity | Gold, Palladium, Silver | `/set_preferences commodity Gold` |
 | PowerPlay | *(Any faction leader)* | `/set_preferences powerplay Zachary Hudson` |
+| Stock Threshold | Minimum tons per commodity (defaults: Gold/Palladium 15,000, Silver 50,000) | `/set_preferences stock_threshold Gold 8000` |
 
 > Preferences can be set per-user or per-server. Add `target: server` to set server-wide defaults (requires Manage Server permission). Without `target`, preferences apply to your personal alerts. PowerPlay preferences filter which appended PowerPlay information appears in alerts, not whether commodity alerts are sent.
 
@@ -111,6 +112,7 @@ Filter which alerts you receive, or which PowerPlay merit information is appende
 | `/set_preferences station_type` | Filter by station type (Starport, Outpost, Surface Port) |
 | `/set_preferences commodity` | Filter by commodity (Gold, Palladium, Silver) |
 | `/set_preferences powerplay` | Filter PowerPlay information appended to market alerts |
+| `/set_preferences stock_threshold` | Set the minimum stock for a commodity's alerts; omit `tons` to reset to the default |
 | `/set_preferences show` | Display your current preferences |
 | `/set_preferences remove` | Remove specific options from a category |
 | `/set_preferences clear` | Clear one category or all preferences |

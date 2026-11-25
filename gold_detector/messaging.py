@@ -14,6 +14,7 @@ from .services import (
     GuildPreferencesService,
     OptOutService,
     SubscriberService,
+    stock_threshold_for,
 )
 
 DISCORD_MESSAGE_LIMIT = 2000
@@ -112,6 +113,12 @@ class DiscordMessenger:
 
         metal_lower = metal.lower()
         return any(metal_lower == c.lower() for c in commodity_prefs)
+
+    def _passes_stock_filter(
+        self, metal: str, stock: int, prefs: dict[str, Any]
+    ) -> bool:
+        """Check if stock exceeds the recipient's (or default) threshold."""
+        return stock > stock_threshold_for(prefs, metal)
 
     def _passes_powerplay_filter(self, power: str, prefs: dict[str, Any]) -> bool:
         """Check if powerplay power passes preference filter."""
@@ -467,6 +474,8 @@ class DiscordMessenger:
                                     continue
                                 if not self._passes_commodity_filter(metal, prefs):
                                     continue
+                                if not self._passes_stock_filter(metal, stock, prefs):
+                                    continue
 
                                 if market_db.has_market_alert_been_sent(
                                     system_name=system_name,
@@ -616,6 +625,8 @@ class DiscordMessenger:
                                 ):
                                     continue
                                 if not self._passes_commodity_filter(metal, prefs):
+                                    continue
+                                if not self._passes_stock_filter(metal, stock, prefs):
                                     continue
 
                                 if market_db.has_market_alert_been_sent(

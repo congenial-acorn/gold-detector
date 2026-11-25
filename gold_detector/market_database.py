@@ -354,7 +354,6 @@ class MarketDatabase:
                     lifecycle["state"] == "hidden"
                     and infrastructure_failure is True
                     and normal_price
-                    and stock > commodity.stock_threshold
                 )
             data[system_name]["stations"][station_name]["metals"][metal] = entry
             if lifecycle["state"] == "ended":

@@ -1998,3 +1998,31 @@ def test_message_chunks_keeps_markdown_links_intact():
     assert all(len(chunk) <= DISCORD_MESSAGE_LIMIT for chunk in chunks)
     assert link_line not in chunks[0]
     assert link_line in chunks[1]
+
+
+@pytest.mark.parametrize(
+    ("metal", "stock", "prefs", "expected"),
+    [
+        ("Gold", 15_001, {}, True),
+        ("Gold", 15_000, {}, False),
+        ("Silver", 18_000, {}, False),
+        ("Silver", 50_001, {}, True),
+        ("Gold", 8_001, {"stock_threshold": {"Gold": 8_000}}, True),
+        ("Gold", 20_000, {"stock_threshold": {"Gold": 25_000}}, False),
+        ("Palladium", 12_000, {"stock_threshold": {"Gold": 8_000}}, False),
+    ],
+)
+def test_stock_filter_uses_recipient_threshold_or_commodity_default(
+    metal, stock, prefs, expected
+):
+    from unittest.mock import Mock
+
+    messenger = DiscordMessenger(
+        _discord_client(Mock(guilds=[])),
+        _settings(),
+        guild_prefs=Mock(),
+        opt_outs=Mock(),
+        subscribers=Mock(),
+    )
+
+    assert messenger._passes_stock_filter(metal, stock, prefs) is expected

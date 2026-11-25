@@ -233,8 +233,8 @@ def test_exposed_episode_stays_suppressed_until_both_sources_clear(
     episode = db.read_all_entries()["Sol"]["stations"]["Station"]["metals"]["Gold"][
         "lifecycle"
     ]["episode_id"]
-    assert not observe(29000, True, stock=1)
-    assert observe(29000, True)
+    # Stock no longer gates eligibility; recipients filter it at dispatch.
+    assert observe(29000, True, stock=1)
     assert not observe(2900, True)
     db.end_scan(set(), set())
     db = MarketDatabase(db_path)

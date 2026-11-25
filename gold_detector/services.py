@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Sequence, Set, Tuple, TypedDict
+from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple, TypedDict
 
-from .commodities import commodity_preference_options
+from .commodities import commodity_preference_options, get_commodity
 from .config import PROJECT_ROOT, sanitize_channel_name, sanitize_role_name
 from .git_backup import STATE_FILES_LOCK
 
@@ -27,7 +27,18 @@ PREFERENCE_OPTIONS: Dict[str, Tuple[str, ...]] = {
     ),
 }
 
-PreferenceMap = Dict[str, List[str]]
+# Per-commodity minimum stock overrides, stored as {commodity: tons} beside the
+# list-valued PREFERENCE_OPTIONS categories.
+STOCK_THRESHOLD_KEY = "stock_threshold"
+
+# List categories map to List[str]; STOCK_THRESHOLD_KEY maps to Dict[str, int].
+PreferenceMap = Dict[str, Any]
+
+
+def stock_threshold_for(prefs: PreferenceMap, metal: str) -> int:
+    """Return the recipient's minimum stock for *metal*, else the registry default."""
+    overrides = prefs.get(STOCK_THRESHOLD_KEY) or {}
+    return overrides.get(metal, get_commodity(metal).stock_threshold)
 
 
 class GuildPreferenceRecord(TypedDict, total=False):
@@ -109,15 +120,40 @@ class GuildPreferencesService:
             return {}, {}
         return parsed_guilds, parsed_users
 
-    def _normalize_preferences(self, raw) -> Dict[str, List[str]]:
+    def _normalize_preferences(self, raw) -> PreferenceMap:
         if not isinstance(raw, dict):
             return {}
-        normalized: Dict[str, List[str]] = {}
+        normalized: PreferenceMap = {}
         for key, allowed in PREFERENCE_OPTIONS.items():
             vals = self._normalize_preference_list(raw.get(key), allowed)
             if vals:
                 normalized[key] = vals
+        thresholds = self._normalize_stock_thresholds(raw.get(STOCK_THRESHOLD_KEY))
+        if thresholds:
+            normalized[STOCK_THRESHOLD_KEY] = thresholds
         return normalized
+
+    @staticmethod
+    def _normalize_stock_thresholds(raw) -> Dict[str, int]:
+        if not isinstance(raw, dict):
+            return {}
+        allowed_map = {opt.lower(): opt for opt in commodity_preference_options()}
+        normalized: Dict[str, int] = {}
+        for name, tons in raw.items():
+            canonical = allowed_map.get(str(name).strip().lower())
+            if canonical and type(tons) is int and tons >= 0:
+                normalized[canonical] = tons
+        return normalized
+
+    @staticmethod
+    def _serialize_preferences(prefs: PreferenceMap) -> Dict[str, Any]:
+        return {
+            key: dict(sorted(vals.items()))
+            if key == STOCK_THRESHOLD_KEY
+            else sorted(map(str, vals))
+            for key, vals in prefs.items()
+            if vals
+        }
 
     @staticmethod
     def _normalize_preference_list(raw_values, allowed: Sequence[str]) -> List[str]:
@@ -154,13 +190,11 @@ class GuildPreferencesService:
             }
             prefs = vals.get("preferences") or {}
             if prefs:
-                entry["preferences"] = {
-                    key: sorted(map(str, vals)) for key, vals in prefs.items() if vals
-                }
+                entry["preferences"] = self._serialize_preferences(prefs)
             guild_serial[str(gid)] = entry
 
         user_serial = {
-            str(uid): {key: sorted(map(str, vals)) for key, vals in prefs.items()}
+            str(uid): self._serialize_preferences(prefs)
             for uid, prefs in self._user_prefs.items()
             if prefs
         }
@@ -220,31 +254,74 @@ class GuildPreferencesService:
 
         normalized = self._normalize_preference_list(selections, allowed)
         with self._lock:
-            if scope == "guild":
-                prefs = self._prefs.get(scope_id, {})
-                pref_block = prefs.get("preferences", {})
-                if normalized:
-                    pref_block[category] = normalized
-                else:
-                    pref_block.pop(category, None)
-                prefs["preferences"] = pref_block
-                self._prefs[scope_id] = prefs
-            else:
-                pref_block = self._user_prefs.get(scope_id, {})
-                if normalized:
-                    pref_block[category] = normalized
-                else:
-                    pref_block.pop(category, None)
-                if pref_block:
-                    self._user_prefs[scope_id] = pref_block
-                else:
-                    self._user_prefs.pop(scope_id, None)
+            self._store_category_locked(scope, scope_id, category, normalized)
             self._persist_locked()
         return normalized
 
+    def set_stock_threshold(
+        self,
+        scope: Literal["guild", "user"],
+        scope_id: int,
+        commodity: str,
+        tons: Optional[int],
+    ) -> int:
+        """Override (or with ``tons=None`` reset) the minimum stock for *commodity*.
+
+        Returns the threshold now in effect for that commodity.
+        """
+        with self._lock:
+            prefs = self.get_preferences(scope, scope_id)
+            thresholds = dict(prefs.get(STOCK_THRESHOLD_KEY) or {})
+            if tons is None:
+                thresholds.pop(commodity, None)
+            else:
+                thresholds[commodity] = tons
+            self._store_category_locked(
+                scope, scope_id, STOCK_THRESHOLD_KEY, thresholds
+            )
+            self._persist_locked()
+            return stock_threshold_for(
+                {STOCK_THRESHOLD_KEY: thresholds}, commodity
+            )
+
+    def clear_category(
+        self, scope: Literal["guild", "user"], scope_id: int, category: str
+    ) -> None:
+        with self._lock:
+            self._store_category_locked(scope, scope_id, category, None)
+            self._persist_locked()
+
+    def _store_category_locked(
+        self,
+        scope: Literal["guild", "user"],
+        scope_id: int,
+        category: str,
+        value: Any,
+    ) -> None:
+        """Set *category* to *value*, dropping it (and empty user blocks) when falsy."""
+        if scope == "guild":
+            prefs = self._prefs.get(scope_id, {})
+            pref_block = prefs.get("preferences", {})
+            prefs["preferences"] = pref_block
+            self._prefs[scope_id] = prefs
+        else:
+            pref_block = self._user_prefs.get(scope_id, {})
+
+        if value:
+            pref_block[category] = value
+        else:
+            pref_block.pop(category, None)
+
+        if scope == "guild":
+            return
+        if pref_block:
+            self._user_prefs[scope_id] = pref_block
+        else:
+            self._user_prefs.pop(scope_id, None)
+
     def get_preferences(
         self, scope: Literal["guild", "user"], scope_id: int
-    ) -> Dict[str, List[str]]:
+    ) -> PreferenceMap:
         if scope == "guild":
             prefs = self._prefs.get(scope_id) or {}
             return dict(prefs.get("preferences") or {})
@@ -263,30 +340,9 @@ class GuildPreferencesService:
 
         normalized_remove = set(self._normalize_preference_list(removals, allowed))
         with self._lock:
-            if scope == "guild":
-                prefs = self._prefs.get(scope_id, {})
-                pref_block = prefs.get("preferences", {})
-                current = pref_block.get(category, [])
-                remaining = [v for v in current if v not in normalized_remove]
-                if remaining:
-                    pref_block[category] = remaining
-                else:
-                    pref_block.pop(category, None)
-                prefs["preferences"] = pref_block
-                self._prefs[scope_id] = prefs
-            else:
-                pref_block = self._user_prefs.get(scope_id, {})
-                current = pref_block.get(category, [])
-                remaining = [v for v in current if v not in normalized_remove]
-                if remaining:
-                    pref_block[category] = remaining
-                    self._user_prefs[scope_id] = pref_block
-                else:
-                    pref_block.pop(category, None)
-                    if pref_block:
-                        self._user_prefs[scope_id] = pref_block
-                    else:
-                        self._user_prefs.pop(scope_id, None)
+            current = self.get_preferences(scope, scope_id).get(category, [])
+            remaining = [v for v in current if v not in normalized_remove]
+            self._store_category_locked(scope, scope_id, category, remaining)
             self._persist_locked()
         return remaining
 
