@@ -1,4 +1,4 @@
-## [Unreleased]
+## [1.12.0]
 
 ### Added
 - **Configurable stock threshold**: `/set_preferences stock_threshold <commodity> [tons]` sets the minimum stock that triggers an alert, per user or per server. Defaults are unchanged (Gold/Palladium 15,000 tons, Silver 50,000 tons); omitting `tons` resets to the default. Stock is now filtered per recipient at dispatch instead of at scan time.
