@@ -9,6 +9,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import gold_detector.monitor as monitor
 
+# Captured before the autouse fixture below replaces it.
+_real_station_faction_state = monitor._station_faction_state
+
 
 class StopMonitoring(Exception):
     """Raised to break out of the monitor loop during tests."""
@@ -420,6 +423,59 @@ def test_monitor_records_observations_below_alert_thresholds(monkeypatch):
     # Non-threshold commodity must NOT appear in active opportunities
     call_args = mock_db.end_scan.call_args
     assert call_args[0][0] == set()
+
+
+def _owned_station(faction_href: str):
+    from bs4 import BeautifulSoup
+
+    return BeautifulSoup(
+        '<div class="itempairlabel">Minor faction</div>'
+        f'<div class="itempairvalue"><a href="{faction_href}">Owner Corp</a></div>',
+        "html.parser",
+    )
+
+
+def test_station_faction_state_uses_inara_states_once_per_system(monkeypatch):
+    system_address = "https://inara.cz/elite/starsystem/638742/"
+    fetched: list[str] = []
+
+    def fake_fetch(address: str):
+        fetched.append(address)
+        return {
+            "/elite/minorfaction/1/": ("Expansion", "Infrastructure failure"),
+            "/elite/minorfaction/2/": ("Expansion",),
+        }
+
+    monkeypatch.setattr(monitor, "fetch_system_factions", fake_fetch)
+    factions: dict[str, dict[str, tuple[str, ...]]] = {}
+
+    states = [
+        _real_station_faction_state(
+            _owned_station(href), "Station", system_address, factions
+        )
+        for href in (
+            "/elite/minorfaction/1/",
+            "/elite/minorfaction/2/",
+            "/elite/minorfaction/3/",
+        )
+    ]
+
+    assert states == [("Owner Corp", True), ("Owner Corp", False), ("Owner Corp", None)]
+    assert fetched == [system_address]
+
+
+def test_station_faction_state_failed_system_fetch_is_unknown(monkeypatch):
+    def failing_fetch(address: str):
+        raise RequestException("503 Server Error")
+
+    monkeypatch.setattr(monitor, "fetch_system_factions", failing_fetch)
+
+    assert _real_station_faction_state(
+        _owned_station("/elite/minorfaction/1/"),
+        "Station",
+        "https://inara.cz/elite/starsystem/638742/",
+        {},
+    ) == (None, None)
 
 
 def test_monitor_skips_prune_when_list_page_fails(monkeypatch):

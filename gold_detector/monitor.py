@@ -10,16 +10,18 @@ from requests import RequestException
 from gold_detector.commodities import get_commodity
 from gold_detector.edsm_client import (
     EdsmDataError,
-    EdsmSystemFactions,
     clear_station_cache,
-    fetch_system_factions,
-    fetch_system_stations,
-    find_station,
     get_station_type,
 )
 from gold_detector.emitter import emit_loop_done
 from gold_detector.http_client import http_get
-from gold_detector.inara_client import get_station_market_urls
+from gold_detector.inara_client import (
+    InaraDataError,
+    InaraSystemFactions,
+    fetch_system_factions,
+    get_station_market_urls,
+    parse_station_owner,
+)
 from gold_detector.market_database import MarketDatabase
 from gold_detector.powerplay import get_powerplay_status
 
@@ -65,28 +67,31 @@ def _extract_price_and_stock(row):
 
 
 def _station_faction_state(
-    system_name: str,
+    soup: BeautifulSoup,
     station_name: str,
-    factions: dict[str, EdsmSystemFactions],
+    system_address: str,
+    factions: dict[str, InaraSystemFactions],
 ) -> tuple[str | None, bool | None]:
-    """Return explicit owner state; unknown evidence must not close an episode."""
+    """Return the owner's Inara state; unknown evidence must not close an episode.
+
+    The owner comes from the already-fetched station-market page; its active
+    states come from the system page, fetched once per system per scan.
+    """
     try:
-        station = find_station(fetch_system_stations(system_name), station_name)
-        if station is None or station.controlling_faction is None:
+        owner = parse_station_owner(soup)
+        if owner is None:
             return None, None
-        if system_name not in factions:
-            factions[system_name] = fetch_system_factions(system_name)
-        owner = station.controlling_faction
-        for faction in factions[system_name].factions:
-            if faction.name.casefold() == owner.casefold():
-                return owner, any(
-                    state.casefold() == "infrastructure failure"
-                    for state in faction.active_states
-                )
-        return owner, None
-    except (EdsmDataError, RequestException):
+        if system_address not in factions:
+            factions[system_address] = fetch_system_factions(system_address)
+        active_states = factions[system_address].get(owner.href)
+        if active_states is None:
+            return owner.name, None
+        return owner.name, any(
+            state.casefold() == "infrastructure failure" for state in active_states
+        )
+    except (InaraDataError, RequestException):
         logger.warning(
-            "Faction lookup failed for %s in %s", station_name, system_name,
+            "Faction lookup failed for %s in %s", station_name, system_address,
             exc_info=True,
         )
         return None, None
@@ -114,7 +119,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
             systems: Dict[tuple[str, str], List[str]] = {}
             logger.info("=== Beginning new scan cycle ===")
             clear_station_cache()
-            factions: dict[str, EdsmSystemFactions] = {}
+            factions: dict[str, InaraSystemFactions] = {}
 
             # Begin scan if using database
             if market_db:
@@ -150,7 +155,7 @@ def monitor_metals(near_urls, metals, market_db: Optional[MarketDatabase] = None
 
                     scanned_systems.add(system_name)
                     owner, infrastructure_failure = _station_faction_state(
-                        system_name, st_name, factions
+                        soup, st_name, system_address, factions
                     )
                     try:
                         st_type = get_station_type(system_name, st_name)

@@ -1,3 +1,11 @@
+## [Unreleased]
+
+### Fixed
+- **Missed alerts from stale EDSM faction data**: Stations Inara lists as in Infrastructure Failure are no longer rejected when EDSM's faction snapshot lags behind.
+
+### Changed
+- **Inara-driven market lifecycle**: The owning faction and its Infrastructure Failure state now come from Inara (station market page and star system page) for the whole episode lifecycle. EDSM is still used for station type, system `id64`, and BGS supply warnings.
+
 ## [1.11.1] - 2026-11-19
 
 ### Fixed

@@ -6,7 +6,7 @@ from typing import cast, final
 import discord
 import pytest
 
-from gold_detector import edsm_client, monitor
+from gold_detector import edsm_client, inara_client, monitor
 
 from gold_detector.bgs_states import (
     BgsFetcher,
@@ -225,28 +225,34 @@ def test_scan_tracks_exposure_outside_discovery_and_suppresses_new_recipients(
 
     messenger, db, channel = _build_scenario(tmp_path, no_warnings)
     price = 2900
-    active_states = [{"state": "Infrastructure Failure"}]
+    active_states = ["Infrastructure failure"]
 
     def market_response(url: str) -> SimpleNamespace:
         return SimpleNamespace(text=f"""
             <h2><a href="/elite/station/5894/">Hale Orbital</a>
             <a href="/elite/system/3207/">Albarib</a></h2>
+            <div class="itempairlabel">Minor faction</div>
+            <div class="itempairvalue"><a href="/elite/minorfaction/1/">Owner</a></div>
             <table><tr><td></td><td></td><td><a>Gold</a></td>
             <td data-order="{price}"></td><td data-order="25000"></td></tr></table>
         """)
 
-    def edsm_response(url: str) -> SimpleNamespace:
-        payload = (
-            {"factions": [{"name": "Owner", "activeStates": active_states}]}
-            if "factions" in url
-            else {
-                "id64": 123,
-                "stations": [{
-                    "name": "Hale Orbital", "type": "Coriolis Starport",
-                    "controllingFaction": {"name": "Owner"},
-                }],
-            }
+    def system_response(url: str) -> SimpleNamespace:
+        states = "".join(
+            f'<span class="statetag">{state}</span>' for state in active_states
         )
+        return SimpleNamespace(text=f"""
+            <h2>System minor factions</h2>
+            <table><tr><th>Faction</th><th>Active</th></tr>
+            <tr><td><a href="/elite/minorfaction/1/">Owner</a></td>
+            <td>{states}</td></tr></table>
+        """)
+
+    def edsm_response(url: str) -> SimpleNamespace:
+        payload = {
+            "id64": 123,
+            "stations": [{"name": "Hale Orbital", "type": "Coriolis Starport"}],
+        }
         return SimpleNamespace(json=lambda: payload)
 
     def stop_scan(seconds: float) -> None:
@@ -254,6 +260,7 @@ def test_scan_tracks_exposure_outside_discovery_and_suppresses_new_recipients(
 
     monkeypatch.setattr(monitor, "get_station_market_urls", lambda urls: ([], set()))
     monkeypatch.setattr(monitor, "http_get", market_response)
+    monkeypatch.setattr(inara_client, "http_get", system_response)
     monkeypatch.setattr(edsm_client, "http_get", edsm_response)
     monkeypatch.setattr(monitor, "get_powerplay_status", lambda *args, **kwargs: set())
     monkeypatch.setattr(monitor, "emit_loop_done", lambda: None)
